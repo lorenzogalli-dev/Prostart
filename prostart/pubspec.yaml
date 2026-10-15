@@ -34,6 +34,12 @@ dependencies:
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
+  # 1.36.8 pinned: the last BSD-3 release. 2.x moved to a license that
+  # requires a paid commercial tier and pings its server at build time.
+  flutter_blue_plus: 1.36.8
+  ffi: ^2.2.0
+  photofinish_camera:
+    path: packages/photofinish_camera
 
 dev_dependencies:
   flutter_test:

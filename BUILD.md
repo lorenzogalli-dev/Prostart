@@ -194,33 +194,11 @@ module docstring before changing them.
 
 ---
 
-## 3. Companion app — `old_flutter_app/prostart`
+## 3. Companion app — `prostart/`
 
-This is the previous app, no longer developed. The current one is `prostart/`
-in the repo root (only `cupertino_icons`, none of the pins below apply to it):
-`cd prostart && flutter pub get && flutter run`.
-
-**Tested with:**
-
-| Tool | Version |
-|---|---|
-| Flutter | 3.38.9 (stable channel) |
-| Dart | 3.10.8 (`pubspec.yaml` requires `^3.10.4`) |
-
-**Install & run**
-```bash
-cd old_flutter_app/prostart
-flutter pub get
-flutter run
-```
-
-**Known gotcha (iOS/macOS):** `path_provider_foundation` must stay pinned to
-**2.5.1** via `dependency_overrides` in `pubspec.yaml` — later versions ship
-an FFI backend that only gets embedded into the app when Flutter's
-native-assets feature is enabled, which it isn't by default on stable. This
-repo already has the pin; if you ever bump it, check `ios/Podfile.lock` for a
-registered `path_provider_foundation` pod, and run `flutter clean && pod
-install` afterward. Full story in `HANDOFF.md`.
+Flutter app in the repo root (today UI with mock data, only `cupertino_icons`):
+`cd prostart && flutter pub get && flutter run`. The previous app
+(`old_flutter_app/prostart`) was removed on 2026-10-15 and lives only in git history.
 
 ---
 

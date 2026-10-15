@@ -332,7 +332,7 @@ class RecentStartsChart extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Eyebrow('Last 8 starts', color: AppColors.textSecondary),
+              Eyebrow('Last ${values.length} starts', color: AppColors.textSecondary),
               const Spacer(),
               Container(width: 14, height: 2, color: AppColors.textFaint),
               const SizedBox(width: 6),

@@ -109,7 +109,7 @@ Each choice here was measured, not assumed (details in `HANDOFF.md`):
 
 - **Firmware (implemented):** Arduino IDE (C/C++) on the XIAO, `Seeeduino:mbed` core (the `nrf52` core silently degrades `micros()` to ~1 ms), and the vendored Seeed `LSM6DS3` library. `Arduino/AlgorithmRealTime/` runs the start sequence and the on-device detector. `Arduino/WifiFieldTest/` is the ESP32-C3 sketch the range was measured with.
 - **Firmware (not yet implemented):** the XIAO → ESP32 pin handover, the ESP-NOW long-range link, and the relay's BLE bridge. The first thing to test is whether ESP32 #2 can run long range and a link to the phone at the same time on its single 2.4 GHz radio. Tracked on the [backlog](https://github.com/users/lorenzogalli-dev/projects/4).
-- **App:** Flutter (Dart), in `prostart/`. Today it is the UI with mock data. The BLE layer (`flutter_blue_plus`) will be ported from the previous app in `old_flutter_app/prostart/`.
+- **App:** Flutter (Dart), in `prostart/`. Today it is the UI with mock data. The previous app, with a working BLE layer (`flutter_blue_plus`), was removed on 2026-10-15; it is in git history before that date (`old_flutter_app/prostart/lib/services/ble_service.dart`).
 - **Capture/analysis tooling:** Python (`capture.py`, `start_detector.py`, `sweep_threshold.py`). See [BUILD.md](./BUILD.md) for exact versions and setup.
 - **Photo-finish AI pipeline:** computer-vision torso-crossing detection + sub-frame interpolation *(premium tier, planned)*.
 
@@ -192,8 +192,6 @@ Reaction-Time-System/
 │   ├── I2C_Scanner/             # I2C bus debug sketch
 │   └── libraries/               # vendored board libraries (Seeed LSM6DS3)
 ├── prostart/                    # Flutter app (current; UI with mock data for now)
-├── old_flutter_app/
-│   └── prostart/                # previous app: BLE + live accelerometer, no longer developed
 ├── Data/                        # recorded CSV captures and their plots
 ├── Docs/                        # architecture image, diagrams, figures
 ├── Half Time Paper/             # the course's half-time paper (PDF)

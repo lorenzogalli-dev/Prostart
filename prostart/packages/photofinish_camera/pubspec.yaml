@@ -1,0 +1,22 @@
+name: photofinish_camera
+description: "ProStart photofinish: native high-fps camera, frames stamped on the host clock, torso crossing found with MediaPipe Pose."
+version: 0.0.1
+publish_to: 'none'
+
+environment:
+  sdk: ^3.10.4
+  flutter: '>=3.3.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      ios:
+        pluginClass: PhotofinishCameraPlugin
+  # MediaPipe's pose model, the one the colleagues' photofinish2.py loads
+  # (pose_landmarker_full, float16). Read natively from the app bundle.
+  assets:
+    - assets/pose_landmarker_full.task

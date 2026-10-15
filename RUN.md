@@ -34,8 +34,11 @@ time: the delay is only in telling you.
   --libraries Arduino/libraries Arduino/AlgorithmRealTime
 ```
 
-Expect flash 13%, RAM 72%. **Always report the RAM figure** after a change.
-To flash: open the `.ino` in the IDE, board **XIAO nRF52840 Sense (No Updates)**
+Expect flash 13%, RAM 75%. **Always report the RAM figure** after a change.
+To compile **and flash** from the terminal, add `--upload -p <port>`
+(`/dev/cu.usbmodem...`; double-tap reset if it does not show up).
+
+Or open the `.ino` in the IDE, board **XIAO nRF52840 Sense (No Updates)**
 — it must be the **mbed** core, not nrf52, which silently degrades `micros()`
 to ~977 µs.
 

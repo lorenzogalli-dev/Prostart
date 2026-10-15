@@ -1,3 +1,0 @@
-# Prostart
-
-Flutter mobile app.

@@ -174,18 +174,8 @@ class _SplashScreenState extends State<SplashScreen>
         width: 124,
         height: 124,
         child: Center(
-          child: ShaderMask(
-            shaderCallback: (r) => const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFFEFFFC2), AppColors.accent],
-            ).createShader(r),
-            child: const Icon(
-              Icons.bolt_rounded,
-              size: 76,
-              color: Colors.white,
-            ),
-          ),
+          // The ProStart logo, in its own lime.
+          child: Image.asset('assets/images/logo.png', width: 80, height: 80),
         ),
       ),
     );

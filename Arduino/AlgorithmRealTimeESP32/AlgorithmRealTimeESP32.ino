@@ -4,6 +4,7 @@
 #include "AicPicker.h"
 #include "Display.h"
 #include "Storage.h"
+#include "Ble.h"
 #include "esp_sleep.h"
 #include "esp_system.h"
 #include "esp_attr.h"
@@ -619,6 +620,11 @@ void setup() {
     Serial.print(flashErrStep);
     Serial.println(" - runs will NOT be stored");
   }
+
+  // Without BLE the board still runs a start exactly as before: the app is a
+  // mirror, never a requirement.
+  if (bleBegin()) Serial.println("BLE: advertising as ProStart");
+  else Serial.println("!! BLE: init failed - running without the app");
 
   Serial.println("Ready. Idle preview streaming. 'p' one reading.");
   Serial.print("Start sequence: press the button on GPIO");
@@ -1346,6 +1352,7 @@ static void startSequence() {
   seqDeadlineUs = seed + COUNTDOWN_MS * 1000UL;
   showCountdown(3);
   Serial.println("SEQ,armed");
+  bleCountdown(3);
 }
 
 static void abortSequence(const char* why) {
@@ -1355,6 +1362,7 @@ static void abortSequence(const char* why) {
   buzzerOn = false;
   Serial.print("SEQ,abort,");
   Serial.println(why);
+  bleEvent(BLE_EV_ABORT);
   showReady();
 }
 
@@ -1402,6 +1410,7 @@ static void serviceSequence() {
       seqState = SEQ_WAIT_SET;
       seqDeadlineUs = onT + (uint32_t)random(SET_DELAY_MIN_MS, SET_DELAY_MAX_MS) * 1000UL;
       Serial.println("SEQ,marks");
+      bleEventAt(BLE_EV_MARKS, onT);
       showMarks();
       break;
     case SEQ_WAIT_SET:
@@ -1416,6 +1425,7 @@ static void serviceSequence() {
       // and the detector's own cap guarantees it opens.
       seqDeadlineUs = setT;
       Serial.println("SEQ,set");
+      bleEventAt(BLE_EV_SET, setT);
       setupDetectorFromPreroll();
       showSet();
       break;
@@ -1424,12 +1434,15 @@ static void serviceSequence() {
       seqState = SEQ_TAIL;
       seqDeadlineUs = goT + TAIL_AFTER_GO_MS * 1000UL;
       Serial.println("SEQ,go");
+      bleEventAt(BLE_EV_GO, goT);
       showGo();
       break;
     case SEQ_TAIL: {
       drainSampling();
       seqState = SEQ_IDLE;
       evaluateAndReportResults();
+      bleResult();
+      blePump();   // out before the flash write, not after it
       // Result on screen first, synchronously: the flash write below blocks
       // for up to a second, and the person is looking at the display now.
       showResult();
@@ -1469,6 +1482,7 @@ static void serviceSequence() {
 
 static void showReady() {
   showingResult = false;
+  bleEvent(BLE_EV_READY);
   screenBegin();
   queueTextCentered(8, 3, C_ORANGE, "ProStart");
   queueTextCentered(40, 3, C_GREEN, "READY");
@@ -1481,6 +1495,11 @@ static void showReady() {
 }
 
 static int countdownShown = 0;
+
+static void bleCountdown(int digit) {
+  uint8_t d = (uint8_t)digit;
+  bleEvent(BLE_EV_COUNTDOWN, &d, 1);
+}
 
 static void showCountdown(int digit) {
   countdownShown = digit;
@@ -1513,6 +1532,20 @@ static void formatSeconds(char* buf, size_t len, float ms) {
   const char* sign = (v < 0) ? "-" : "";
   if (v < 0) v = -v;
   snprintf(buf, len, "%s%ld.%03ld", sign, v / 1000, v % 1000);
+}
+
+// The verdict as the app gets it. Same strings showResult() switches on.
+static void bleResult() {
+  uint8_t p[13];
+  const char* v = lastVerdict;
+  if (v != nullptr && strcmp(v, "valid start") == 0)      p[0] = BLE_V_VALID;
+  else if (v != nullptr && strcmp(v, "FALSE START") == 0) p[0] = BLE_V_FALSE_START;
+  else if (v != nullptr && strcmp(v, "no movement") == 0) p[0] = BLE_V_NO_MOVEMENT;
+  else                                                     p[0] = BLE_V_UNUSABLE;
+  blePut32(&p[1], (uint32_t)(int32_t)lroundf(lastReactionMs * 1000.0f));
+  blePut32(&p[5], lastOnsetUs);
+  blePut32(&p[9], goCaptured ? goT : 0);
+  bleEvent(BLE_EV_RESULT, p, sizeof(p));
 }
 
 static void showResult() {
@@ -1619,12 +1652,17 @@ static void enterSystemOff() {
 static void shutDown() {
   if (seqState != SEQ_IDLE) abortSequence("power off");
   Serial.println("POWER,off");
+  bleEvent(BLE_EV_OFF);
   powerBeep();
   screenBegin();
   queueTextCentered(40, 2, C_WHITE, "Nice session");
   queueTextCentered(66, 2, C_ORANGE, "today!");
   displayPump(0xFFFFFFFFUL);
-  delay(2000);
+  // Instead of delay(2000): the "off" event still has to reach the app.
+  for (uint32_t t0 = millis(); millis() - t0 < 2000; ) {
+    blePump();
+    delay(5);
+  }
   enterSystemOff();
 }
 
@@ -1777,7 +1815,10 @@ static void handleSerial() {
 static void serviceCountdown() {
   if (seqState != SEQ_WAIT_MARKS) return;
   int digit = 3 - (int)((micros() - seqStartUs) / 1000000UL);
-  if (digit >= 1 && digit != countdownShown) showCountdown(digit);
+  if (digit >= 1 && digit != countdownShown) {
+    showCountdown(digit);
+    bleCountdown(digit);
+  }
 }
 
 // Time the display may take after each sample. On the XIAO a sample period
@@ -1794,6 +1835,12 @@ void loop() {
   serviceCountdown();
   serviceButton();
   handleSerial();
-  // Right after a sample, never between two: that is the whole point.
-  if (sampled || !imuReady) displayPump(DRAW_BUDGET_US);
+  bleSyncAllowed = (seqState == SEQ_IDLE || seqState == SEQ_WAIT_MARKS ||
+                    seqState == SEQ_WAIT_SET);
+  // Right after a sample, never between two: that is the whole point. BLE
+  // gets the slot only while the display has nothing to draw, as on the XIAO.
+  if (sampled || !imuReady) {
+    if (drawCount == 0) blePump();
+    displayPump(DRAW_BUDGET_US);
+  }
 }

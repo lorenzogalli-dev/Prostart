@@ -1,0 +1,13 @@
+# models are downloaded with tools/download_models.py (too large for git)
+models/*.task
+# your race videos and outputs
+*.mp4
+*.mov
+*.avi
+*.jpg
+*.png
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/

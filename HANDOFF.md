@@ -1,7 +1,188 @@
 # HANDOFF — Prostart live IMU data view & sensor evaluation
 
-Last updated: 2026-10-08. Written for an agent starting with no prior context.
+Last updated: 2026-10-15. Written for an agent starting with no prior context.
 Sections are newest first.
+
+## READ THIS FIRST — 2026-10-15 (late night): CPU masks work; real frame timestamps everywhere; app icon
+
+- **CPU fixed the silhouette**: track clip, app silhouette 19/20, interp
+  1.990 / fit 1.987 vs Python 1.994 / 1.993 (first frame 2.000 both).
+- **Bug in the colleagues' `video.py`** (fixed here, tell them): time was
+  `index / CAP_PROP_FPS`; on iPhone slow-motion files OpenCV reports 196.47
+  fps for a 240 fps clip (and 534 frames for 416), so every time was 22 % too
+  long. Now `CAP_PROP_POS_MSEC` per frame (what `photofinish2.py` did), the
+  start sought by time, the reported fps measured. IMG_1118 (240 fps, line
+  0.5): segmentation fit 0.859 / interp 0.862 / first 0.863 s ±1.0 ms, torso
+  0.871 (was 1.046 etc.). App on the same clip (line by hand): 0.863 / 0.864
+  / 0.867. Their tests still pass.
+- App video analysis now uses each sample buffer's PTS (the live camera
+  always used real stamps).
+- App icon: `prostart media/prostart-logo.png` (opaque, black + lime
+  stopwatch) into every iOS AppIcon size and the Android mipmaps.
+
+## READ THIS FIRST — 2026-10-15 (night): the silhouette was never used on iOS; MediaPipe moved to CPU (built, not yet re-run)
+
+On the track clip the app gave interpolated 1.981-1.983 s = the Python's
+`landmarks` method, not `segmentation` (1.994). A diagnostic counter showed
+"chest front from silhouette 0/20" and the mask overlay was empty: with the
+GPU delegate the iOS segmentation masks came back all < 0.5, so every chest
+front fell back to the 15% anatomical estimate (also on the live camera).
+Now CPU, as the Python. Expected on the clip: silhouette ~20/20, cyan mask on
+the body, interpolated ≈ 1.994 s.
+Video analysis no longer asks the direction: every frame is judged both ways
+and the torso centre's travel picks one (a hand-picked wrong direction gave
+"no crossing" on IMG_1118.MOV, 240 fps, ~/Desktop/kinepose/test_videos; the
+Python there, runs right, line 0.5: segmentation fit 1.046 / interp 1.052 /
+first 1.054 s ±2.1 ms; landmarks 1.044; torso 1.063). The app found a torso
+in 217 frames vs the Python's 179 on that clip (MediaPipe 1.0.0 vs 0.10.14).
+
+## READ THIS FIRST — 2026-10-15 (late): the colleagues' Python is the reference, the app runs a port of it
+
+The colleagues sent `finisheye-detection` (now `Photofinish_Python/`, replaces
+`photofinish2.py`; the Windows zip had turned `pkg\file.py` paths into file
+names - rebuilt as folders). MediaPipe Pose, 4 methods (`torso`, `shoulders`,
+`segmentation` = chest front from the silhouette, `landmarks`), a judge with
+interpolation + a line fit over ±160 ms with one-sided outlier trimming,
+TR 19 rounding up to the hundredth, 2 poses → largest torso. Their tests pass
+(10/10, venv with mediapipe 0.10.14). User's decision: **keep their code and
+fix from there.**
+
+`packages/photofinish_camera/.../CrossingFinder.swift` is now a line-by-line
+port of `detector.locate_torso(method="segmentation")` + `_silhouette_front`
+and `judge.FinishJudge` (push/refine), names aligned. Not from the Python: the
+frame selection (~60 fps coarse, every frame in the bracket, then coarse
+frames within ±160 ms for the fit) and the direction (from the torso centre's
+motion; the Python takes `--dir`). The app shows the official (rounded up)
+time, the 3-decimal one, the timing method and its uncertainty.
+
+On the user's track clip (`Photofinish_Python/videos/test_iphone.mov`, 30 fps,
+576x1024, runs LEFT to right, painted line x≈0.507; videos are git-ignored):
+segmentation 1.993 s, landmarks 1.989, shoulders 2.008, torso 2.011 (fit) -
+the centre is 18 ms late on the front. **Not yet shown: that the Swift port
+gives the same numbers as the Python on the same frames** - the app only
+analyses the live camera. **Added the same evening, not yet run:**
+"Analyse a recorded video" (Photofinish screen → library picker, original
+file so slow-motion keeps its rate; portrait or landscape; line dragged on
+the upright first frame; direction chosen like `--dir`). `VideoAnalyzer.swift`
+runs it as `video.py` does: every frame, MediaPipe VIDEO mode, 640 px wide,
+t = index/fps, stop 1 s after the crossing, then the fit. Expected on
+`test_iphone.mov` with the line at x≈0.507, runs right: ~1.993 s fit /
+1.994 interpolated / 2.000 first frame. Differences to expect: MediaPipe
+1.0.0 (GPU) vs 0.10.14 (CPU), and the dragged line (0.001 of width ≈ 0.7 ms
+at this speed).
+
+## READ THIS FIRST — 2026-10-15 (evening): the app works end to end with a demo start unit; photofinish measured on an iPhone 13
+
+`prostart/` is no longer a mockup. Built and installed on the user's iPhone 13
+(`flutter build ios --release` + `xcrun devicectl device install app ...`;
+`flutter install` fails silently over wireless, devicectl works).
+
+- **`lib/start_unit/`**: protocol (mirror of `AlgorithmRealTimeESP32/Ble.h`),
+  `ClockSync` (min of each one-way difference, 10 s window, 32-bit unwrap),
+  `PhoneClock` (FFI: `mach_absolute_time` on iOS = the camera's host clock;
+  `CLOCK_BOOTTIME` on Android = Camera2's), `BleStartUnit`
+  (flutter_blue_plus **1.36.8 pinned**: 2.x is no longer BSD, paid commercial
+  tier + build-time ping), `SimulatedStartUnit` (demo: fake sequence, 6 s
+  marks, random RT 120-190 ms). `flutter test`: 7 tests on protocol + sync.
+- **Reaction screen**: mirrors the board's phases, then the board's result.
+- **Photofinish**: local plugin `packages/photofinish_camera` (CocoaPods,
+  MediaPipeTasksVision 1.0.0, `pose_landmarker_full.task` as plugin asset;
+  flutter_blue_plus comes in through SPM, both coexist). Highest-fps 16:9
+  format, stabilisation off, exposure shortened to 1/1000 s when light allows
+  (indoors it stays ~1/250: ISO maxed). From the go instant (board → phone
+  clock via sync) frames are downscaled to 288x512 upright into a RAM ring;
+  a ±6 px band on the line triggers; recording ends when the band is clear
+  (0.3-1.5 s); MediaPipe (image mode, GPU) on ~60 fps then every frame in
+  the bracket; torso centre = mean of 11/12/23/24 as in `photofinish2.py`;
+  sign change of the signed distance to the line, linear interpolation.
+  Poses with any of the four landmarks out of frame or visibility < 0.5 are
+  rejected.
+- **Measured on the iPhone 13 (screenshots IMG_3007-3009, repo root):** 239
+  fps delivered at the line, 4.2 ms between the interpolated frames, sync
+  ±4 ms (demo), image upright. A too-close pass gave a wrong time with the
+  "torso" on a wrist → the visibility check above.
+
+### Open
+1. **Torso front, built, not yet run** (user's call: "the shoulder/torso
+   part furthest ahead"). Landmarks are joints, so the front comes from
+   MediaPipe's segmentation mask: rows shoulders → 85% to hips, minus pixels
+   within 0.13 torso lengths of shoulder-elbow-wrist, extreme pixel in the
+   running direction (from the centre's motion). The result frame shows the
+   timed front (green) and the old centre (grey). Limit: an arm swung across
+   the chest hides the chest edge behind it. The centre crossed ~20 ms late
+   at 6 m/s on IMG_3009.
+2. ESP32 on hardware (16/10): flash, the BLE test list below, then the app
+   against it instead of the demo unit.
+3. Android camera (Camera2, same plugin).
+4. Untested yet: the new end-of-pass window and the pose check.
+
+## READ THIS FIRST — 2026-10-15: demo plan, old app removed, BLE on the XIAO (compiles, never run)
+
+**Demo plan (30 m, tested on iPhone, Android too later).** No ESP-NOW for the
+demo: the start unit talks BLE straight to the phone, which stands at the
+finish. Two app modes:
+- *Reaction time*: the app only mirrors the board (countdown, marks, set, go,
+  result). All the logic stays on the board.
+- *Photofinish*: phone upright at the finish, camera at max fps, a red line
+  drawn on the finish line. Clocks are synced over BLE between "on your marks"
+  and "set"; at "go" the board notifies the go instant, the phone buffers
+  frames (nothing saved), finds the torso crossing and computes the time.
+The colleagues' detector is `photofinish2.py` (root, untracked): MediaPipe
+Pose Landmarker, torso centre = mean of landmarks 11/12/23/24, sub-frame
+linear interpolation. Not to be rewritten in C++: MediaPipe/ML Kit run
+natively on the phone; the ~40 lines of logic go to Dart. Known issues to
+discuss with them: the torso *centre* crosses ~10-15 ms after the torso
+front; direction fixed left→right; fps and rotation taken from the file.
+On the phone the camera needs native code (per-frame timestamps on the sync
+clock, short exposure against blur, >60 fps where available).
+
+**`old_flutter_app/` deleted.** `prostart/` is the only app. The old BLE layer
+(`lib/services/ble_service.dart`, with the `systemDevices` fix) is in git
+before this date.
+
+**BLE: tried on the XIAO, reverted; now only in the ESP32 sketch (compiles,
+never run).** `AlgorithmRealTime` (XIAO) is back to the validated v5, no BLE
+(re-flashed, `verify_rate.py` PASS, std 16.6 µs). Decided with the user after
+a day of patches: ArduinoBLE on Seeed's mbed core is not built for this board
+(its nRF52840 code paths key on `ARDUINO_ARCH_NRF52840`, which this core does
+not define), and the XIAO stamps samples in `loop()` with no FIFO, so any CPU
+given to BLE costs timing. What went wrong, in order, so nobody retries it
+blind:
+1. The Cordio stack runs in an RTOS thread at `loop()`'s priority →
+   time-slicing → 1417 gaps up to 6 ms in 9000 samples, nothing connected.
+2. Raising `loop()` above it (sleeping on the DRDY flag) fixed the gaps but
+   `BLE.begin()` then failed: `HCI::sendCommand` busy-polls for the answer.
+3. Flash store + dump starved the link → disconnect after GO.
+4. Two consecutive starts: hang at "marks" with the buzzer on for good. Cause:
+   the 256-byte HCI receive buffer drops packets when full (here: the phone
+   pinging while the board saved a run) and the unprotected store raced
+   `loop()`; a lost "completed packets" event leaks `_pendingPkt` until
+   `sendAclPkt()` waits forever. The PWM buzzer keeps sounding on its own.
+Fixes existed for each (patched library, bounded waits, 2 KB buffer, stall
+guard) and passed a battery, but with jitter up (27-30 vs 22-25 µs) and the
+serial dump 1.7x slower: too many changes in the timing path of the
+reference board.
+
+The protocol (GATT `F7280000-...`: `event`, `ping`, `pong`) and the sync rule
+now live in `AlgorithmRealTimeESP32/Ble.h`, on the core's BLE library, which
+is NimBLE on the C3: `notify()` never blocks, samples are ISR-stamped and wait
+in the BMI270 FIFO, so none of the above applies. Flash 52%, RAM 49%.
+`AlgorithmRealTimeESP32/Python_Tools/ble_monitor.py` (bleak, Mac) is the
+app's side: events, sync offset, go instant on the host clock.
+
+**Test it on the ESP32 the way the XIAO was tested** (the second point is
+the one that found the hang):
+- `verify_rate.py` with and without `ble_monitor.py` connected: stamp jitter
+  with the radio on vs 0.55 µs without (08/10);
+- at least 3 starts in a row with the monitor connected, spaced so no command
+  lands during a dump: every event incl. RESULT, no `GAPS`/`DROPPED`, board ==
+  offline detector;
+- disconnect, check it advertises again, one start with nothing connected.
+
+### Open, in order
+1. App: BLE layer in `prostart/`, reaction screen as mirror, photofinish.
+2. ESP32 on hardware (2026-10-16): flash, the tests above, connect the app.
+3. Native camera (iOS first), then torso detection.
 
 ## READ THIS FIRST — 2026-10-08: the FIFO version works on hardware
 

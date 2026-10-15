@@ -1,15 +1,30 @@
 import 'package:flutter/material.dart';
 
+import '../app_state.dart';
+import '../start_unit/protocol.dart';
 import '../theme/app_theme.dart';
+import '../widgets/device_card.dart';
 import '../widgets/glass.dart';
-import 'photofinish_result_screen.dart';
+import 'photofinish_screen.dart';
 import 'reaction_result_screen.dart';
+import 'reaction_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: AppState.instance,
+      builder: (context, _) => _build(context, AppState.instance),
+    );
+  }
+
+  Widget _build(BuildContext context, AppState app) {
+    final lastRt = app.reactions
+        .where((r) => r.result.verdict == Verdict.valid)
+        .lastOrNull;
+    final lastPf = app.photofinishes.lastOrNull;
     return SafeArea(
       bottom: false,
       child: ListView(
@@ -22,7 +37,7 @@ class HomeScreen extends StatelessWidget {
         children: [
           const _Greeting(),
           const SizedBox(height: AppSpacing.xl),
-          const _DeviceCard(),
+          const DeviceCard(),
           const SizedBox(height: AppSpacing.xxl),
           const _SectionTitle('Choose your session'),
           const SizedBox(height: AppSpacing.md),
@@ -31,10 +46,11 @@ class HomeScreen extends StatelessWidget {
             color: AppColors.accent,
             title: 'Reaction Time',
             subtitle: 'Block start reaction, measured from the gun',
-            stat: 'Last  0.138 s',
+            stat: lastRt == null
+                ? 'No starts yet'
+                : 'Last  ${formatSeconds(lastRt.result.reactionSeconds)} s',
             decoration: const _SignalDecoration(),
-            onTap: () =>
-                Navigator.of(context).push(ReactionResultScreen.route()),
+            onTap: () => Navigator.of(context).push(ReactionScreen.route()),
           ),
           const SizedBox(height: AppSpacing.lg),
           _ModeCard(
@@ -42,15 +58,17 @@ class HomeScreen extends StatelessWidget {
             color: AppColors.cyan,
             title: 'Photofinish',
             subtitle: 'Reaction + total time, gun to finish line',
-            stat: 'Last  10"93 · 100 m',
+            stat: lastPf == null
+                ? 'No runs yet'
+                : 'Last  ${lastPf.officialSeconds.toStringAsFixed(2)} s · '
+                    '${lastPf.distanceM.toStringAsFixed(0)} m',
             decoration: const _FinishLineDecoration(),
-            onTap: () =>
-                Navigator.of(context).push(PhotofinishResultScreen.route()),
+            onTap: () => Navigator.of(context).push(PhotofinishScreen.route()),
           ),
           const SizedBox(height: AppSpacing.xxl),
-          const _SectionTitle('This week'),
+          const _SectionTitle('This session'),
           const SizedBox(height: AppSpacing.md),
-          const _WeekStats(),
+          _SessionStats(app: app),
         ],
       ),
     );
@@ -98,129 +116,6 @@ class _Greeting extends StatelessWidget {
           ),
         ),
       ],
-    );
-  }
-}
-
-class _DeviceCard extends StatelessWidget {
-  const _DeviceCard();
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassPanel(
-      tint: AppColors.bluetooth,
-      padding: const EdgeInsets.all(AppSpacing.lg),
-      child: Row(
-        children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF5B9BFF), AppColors.bluetooth],
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppColors.bluetooth.withValues(alpha: 0.5),
-                  blurRadius: 18,
-                ),
-              ],
-            ),
-            child: const Icon(Icons.bluetooth_rounded, color: Colors.white),
-          ),
-          const SizedBox(width: AppSpacing.lg),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Row(
-                  children: [
-                    Text(
-                      'MyProstart',
-                      style: TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    SizedBox(width: 6),
-                    Icon(
-                      Icons.check_circle_rounded,
-                      size: 18,
-                      color: AppColors.success,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Container(
-                      width: 7,
-                      height: 7,
-                      decoration: BoxDecoration(
-                        color: AppColors.success,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppColors.success.withValues(alpha: 0.8),
-                            blurRadius: 6,
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    const Text(
-                      'Connected',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.success,
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const _BatteryChip(),
-        ],
-      ),
-    );
-  }
-}
-
-class _BatteryChip extends StatelessWidget {
-  const _BatteryChip();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(AppRadius.pill),
-      ),
-      child: const Row(
-        children: [
-          Icon(
-            Icons.battery_5_bar_rounded,
-            size: 16,
-            color: AppColors.textSecondary,
-          ),
-          SizedBox(width: 2),
-          Text(
-            '87%',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: AppColors.textSecondary,
-              fontFeatures: tabular,
-            ),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -490,33 +385,58 @@ class _FinishPainter extends CustomPainter {
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
 
-class _WeekStats extends StatelessWidget {
-  const _WeekStats();
+class _SessionStats extends StatelessWidget {
+  final AppState app;
+  const _SessionStats({required this.app});
 
   @override
   Widget build(BuildContext context) {
-    return const Column(
+    final rts = app.reactions
+        .where((r) => r.result.verdict == Verdict.valid)
+        .map((r) => r.result.reactionSeconds)
+        .toList();
+    final best = rts.isEmpty ? null : rts.reduce((a, b) => a < b ? a : b);
+    final avg = rts.isEmpty ? null : rts.reduce((a, b) => a + b) / rts.length;
+    final pf = app.photofinishes.map((r) => r.officialSeconds).toList();
+    final bestPf = pf.isEmpty ? null : pf.reduce((a, b) => a < b ? a : b);
+    return Column(
       children: [
         Row(
           children: [
             Expanded(
-              child: _StatTile(label: 'Best RT', value: '0.121', unit: 's'),
+              child: _StatTile(
+                label: 'Best RT',
+                value: best == null ? '–' : formatSeconds(best),
+                unit: best == null ? '' : 's',
+              ),
             ),
-            SizedBox(width: AppSpacing.md),
+            const SizedBox(width: AppSpacing.md),
             Expanded(
-              child: _StatTile(label: 'Avg RT', value: '0.150', unit: 's'),
+              child: _StatTile(
+                label: 'Avg RT',
+                value: avg == null ? '–' : formatSeconds(avg),
+                unit: avg == null ? '' : 's',
+              ),
             ),
           ],
         ),
-        SizedBox(height: AppSpacing.md),
+        const SizedBox(height: AppSpacing.md),
         Row(
           children: [
             Expanded(
-              child: _StatTile(label: 'Starts', value: '48', unit: ''),
+              child: _StatTile(
+                label: 'Starts',
+                value: '${app.reactions.length}',
+                unit: '',
+              ),
             ),
-            SizedBox(width: AppSpacing.md),
+            const SizedBox(width: AppSpacing.md),
             Expanded(
-              child: _StatTile(label: 'Best 100 m', value: '10"93', unit: ''),
+              child: _StatTile(
+                label: 'Best photofinish',
+                value: bestPf == null ? '–' : bestPf.toStringAsFixed(2),
+                unit: bestPf == null ? '' : 's',
+              ),
             ),
           ],
         ),

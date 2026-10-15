@@ -1,0 +1,33 @@
+PODS:
+  - Flutter (1.0.0)
+  - MediaPipeTasksCommon (1.0.0)
+  - MediaPipeTasksVision (1.0.0):
+    - MediaPipeTasksCommon (= 1.0.0)
+  - photofinish_camera (0.0.1):
+    - Flutter
+    - MediaPipeTasksVision (= 1.0.0)
+
+DEPENDENCIES:
+  - Flutter (from `Flutter`)
+  - photofinish_camera (from `.symlinks/plugins/photofinish_camera/ios`)
+
+SPEC REPOS:
+  trunk:
+    - MediaPipeTasksCommon
+    - MediaPipeTasksVision
+
+EXTERNAL SOURCES:
+  Flutter:
+    :path: Flutter
+  photofinish_camera:
+    :path: ".symlinks/plugins/photofinish_camera/ios"
+
+SPEC CHECKSUMS:
+  Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
+  MediaPipeTasksCommon: 520bf860a59a3425471fdd516d82263d2ced5700
+  MediaPipeTasksVision: 2a0e74fd13f7a5df9eae3716b21e459806c65ce9
+  photofinish_camera: 566c75921330255bc64d341394e72cfbe9f66566
+
+PODFILE CHECKSUM: 53a6aebc29ccee84c41f92f409fc20cd4ca011f1
+
+COCOAPODS: 1.16.2

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'app_state.dart';
 import 'screens/home_shell.dart';
 import 'screens/photofinish_result_screen.dart';
 import 'screens/reaction_result_screen.dart';
@@ -9,6 +10,7 @@ import 'theme/app_theme.dart';
 
 void main() {
   SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle.light);
+  AppState.instance.init();
   runApp(const ProStartApp());
 }
 

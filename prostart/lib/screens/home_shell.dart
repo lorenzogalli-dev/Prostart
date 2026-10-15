@@ -4,7 +4,7 @@ import '../theme/app_theme.dart';
 import '../widgets/app_bottom_nav_bar.dart';
 import '../widgets/glass.dart';
 import 'home_screen.dart';
-import 'reaction_result_screen.dart';
+import 'reaction_screen.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -30,7 +30,7 @@ class _HomeShellState extends State<HomeShell> {
         activeIndex: _index,
         onTap: (i) => setState(() => _index = i),
         onTapAction: () =>
-            Navigator.of(context).push(ReactionResultScreen.route()),
+            Navigator.of(context).push(ReactionScreen.route()),
       ),
       body: GlowBackground(
         child: _index == 0 ? const HomeScreen() : _placeholder(_index),
