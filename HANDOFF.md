@@ -19,6 +19,35 @@ Sections are newest first.
   always used real stamps).
 - App icon: `prostart media/prostart-logo.png` (opaque, black + lime
   stopwatch) into every iOS AppIcon size and the Android mipmaps.
+- Last check on the track clip, after all of the above: app interpolated
+  **1.993 s** vs Python 1.994, first frame 2.000 both, silhouette 19/20.
+  The app and the colleagues' reference now agree within a few ms; what is
+  left between them is the hand-dragged line and MediaPipe 1.0.0 vs 0.10.14.
+- Why the drawn chest dot can look a little "behind" the cyan silhouette:
+  the frame shown is the nearest one to the crossing (here 7 ms after it, at
+  30 fps), and the edge is the 80th percentile of ~20 row edges, by design
+  (the colleagues' guard against a forearm), not the most forward pixel.
+  Worth tuning against hand-marked 240 fps sprints with the colleagues, not
+  before. Same for `chest_factor` 0.15 (an average anatomical proportion).
+- Committed and pushed as `31beef3`. The promo media in `prostart media/`
+  (ads PDF, motion mp4, "GO"/"Photofinish"/... PNGs) are the user's and were
+  left out of git on purpose.
+
+### Next session (2026-10-16, with the ESP32), in order
+1. Flash `AlgorithmRealTimeESP32` (BLE) and run the battery that found the
+   XIAO hang: `verify_rate.py` with and without `ble_monitor.py`; at least 3
+   starts in a row with the monitor connected, spaced so no command lands in
+   a dump (~75 s); disconnect → advertises again; one start with nothing
+   connected. Pass = every event incl. RESULT, no GAPS/DROPPED beyond the
+   known ones, board == offline detector, stamp jitter with radio on.
+2. Connect the app to the real board instead of the demo unit (Reaction and
+   Photofinish).
+3. **Measure the clock sync**, the one error term never measured: the board
+   lights an LED (or beeps) at a known board instant, the iPhone films it at
+   240 fps; the LED's first frame vs the instant mapped through the sync
+   gives sync + camera error together. ~20 repeats → mean and spread. Needs
+   an LED + ~220 Ω on a free ESP32 pin, and a small firmware hook.
+4. Tell the colleagues about the `video.py` fps bug (fixed here).
 
 ## READ THIS FIRST — 2026-10-15 (night): the silhouette was never used on iOS; MediaPipe moved to CPU (built, not yet re-run)
 
