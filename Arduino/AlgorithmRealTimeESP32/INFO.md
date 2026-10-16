@@ -2,27 +2,31 @@
 
 The start unit's firmware (`../AlgorithmRealTime`, XIAO nRF52840 Sense)
 ported to an **ESP32-C3 SuperMini with an external BMI270**. It has the same
-behaviour, screens, button logic, serial protocol and flash storage. The
-XIAO folder is untouched.
+behaviour, screens, button logic and serial protocol. The XIAO folder is
+untouched.
 
-**Status (2026-10-07): compiles, never run on hardware.** No ESP-NOW yet. This
-port only does what the XIAO did. ESP-NOW is the next step, after the tests below.
+**Status (2026-10-16): v6, on hardware, with BLE to the app.** Nothing is
+stored on the board any more: each start goes to the app over BLE (Ble.h,
+`data`/`ctrl`), which saves it as a CSV. Serial never blocks; every verdict is
+checked (`checkTiming`) and is UNUSABLE rather than wrong if the recording is
+not what the detector believes. Background in HANDOFF 2026-10-16 (evening).
+No ESP-NOW yet.
 
 ## Build and upload
 
 - Board: **Nologo ESP32C3 Super Mini** (core `esp32:esp32` 3.3.12). USB CDC
   On Boot is already "Enabled" on this board.
-- `partitions.csv` in this folder is picked up automatically. It adds the
-  `runs` partition (25 runs). Nothing to choose in the menu.
+- Default partition table (v6 removed `partitions.csv` and its `runs`
+  partition with the flash storage).
 - CLI:
   ```
   arduino-cli compile --fqbn esp32:esp32:nologo_esp32c3_super_mini Arduino/AlgorithmRealTimeESP32
   arduino-cli upload  --fqbn esp32:esp32:nologo_esp32c3_super_mini -p /dev/cu.usbmodemXXXX Arduino/AlgorithmRealTimeESP32
   ```
-  (`arduino-cli` is inside the Arduino IDE app; see BUILD.md.) Last build: 27% flash, 45% RAM.
+  (`arduino-cli` is inside the Arduino IDE app; see BUILD.md.) Last build: 52% flash, 48% RAM.
 - If the board is off (light sleep) the USB port is gone. Switch it on, or hold
   the button (or BOOT, same pin), tap RESET, release, then upload.
-- On this Mac (2026-10-07) Arduino's `ctags` is x86 and there is no Rosetta.
+- Arduino's `ctags` is x86: the Mac needs Rosetta (installed 2026-10-16).
   `--build-property tools.ctags.pattern=/usr/bin/true` is not enough for this
   sketch: it relies on the prototypes ctags generates. Either install Rosetta
   (`softwareupdate --install-rosetta`), which the IDE needs too, or compile a
@@ -87,9 +91,9 @@ Why this map (the user's layout, 2026-10-07; an earlier one had the button on
 | Timestamp | main loop, after seeing the flag | **inside the ISR** (`esp_timer`, 1 µs): no loop latency |
 | Buzzer | nRF PWM, antiphase | LEDC always running + GPIO-matrix routing/inversion; still 2 register writes at the beep. Wave phase at the beep is random, 0–125 µs |
 | Display | mbed::SPI 8 MHz | SPIClass 8 MHz, same queue and budget |
-| Storage | external QSPI, nrfx | internal flash, `runs` partition, same 25 × 80 KB slots and format |
+| Storage | external QSPI, nrfx | none since v6: runs go to the app over BLE |
 | Off | System OFF, few µA | light sleep (button on GPIO9 cannot wake deep sleep); "on" = restart after the 1.5 s hold. The SuperMini's red power LED stays on (~mA). BMI270 suspended, backlight held LOW |
-| Serial with no terminal | the core drops the data | bounded: writes block ≤ 100 ms, a dump stops if nobody reads for 200 ms (the run is on flash anyway) |
+| Serial with no terminal | the core drops the data | TX timeout 0: never blocks; the dump starts only with a host reading and goes a few rows per pass |
 | Dump header | — | + `SENSOR,bmi270`, `ODR,800` |
 
 `StartDetector.h` and `AicPicker.h` are byte-identical. The detector works on
@@ -103,7 +107,7 @@ Each step has a pass criterion. Do not move on until it passes.
 1. **Boot.** Open a serial monitor and look for:
    - `IMU OK - BMI270 accel 800 Hz`;
    - `clock: micros() resolution ~1 us`;
-   - `flash: ... 0/25 run slots used`.
+   - `BLE: advertising as ProStart`.
 
    If you get `IMU error - BMI270: <step>`, the step names the problem:
    - `chip id` → wiring, address or CS. If it reads `0xFF` right after an
@@ -140,10 +144,11 @@ Each step has a pass criterion. Do not move on until it passes.
      the stall. `resyncs` must be 0.
    - `GAPS` > 0 with a small backlog would mean the BMI270 itself stopped
      producing samples (not the loop). Report it.
-4. **Storage.** Run 2–3 starts and power cycle. Then:
-   - `pull_captures.py` gets them all;
-   - `L` lists them;
-   - `E` reports erase times.
+4. **Runs to the app** (v6). With `Python_Tools/ble_monitor.py --outdir DIR
+   --start-serial <port> --runs 1` (or the app): RESULT ~1 s after GO, the
+   recording complete in ~1-2 s, ACKed, CSV written; the board's footer
+   says "saved in app". FIFO regression: `S600` then `O` when idle must
+   print an offset < 3 ms.
 5. **Power.**
    - Hold 1.5 s: beep, "Nice session today!", screen dark, backlight off.
    - A short press stays off.
@@ -162,13 +167,15 @@ The first block starts (`Data/block_starts_071026/`, captured by the
 colleague) lost samples to the loop: ~63 at "set" (the pre-roll replay takes
 ~80 ms here, the C3 has no FPU) and 3 every 2.000 s, a stall that is not in
 this sketch. One of those holes fell on a push-off. Now:
-- the BMI270 FIFO holds every sample (1.28 s of room), read in bursts;
+- the BMI270 FIFO holds every sample (0.42 s of room: 337 frames, measured
+  16/10; this said 1.28 s until then), read in bursts;
 - INT1 is only a clock: the ISR queues one stamp per edge, and each FIFO
   frame is paired with its own stamp (`serviceSampling()`);
 - a stamp the ISR could not take is interpolated on the sensor's period and
-  counted in `DROPPED`; an overrun (only possible in a >1.2 s stall: the
-  flash write and the dump, never during a start) restarts both queues and
-  shows as a gap.
+  counted in `DROPPED`; an overrun (a >0.42 s stall: the flash write and the
+  dump, never during a start) restarts both queues and shows as a gap. Until
+  16/10 a stall of 0.42-1.27 s went undetected and shifted every later
+  stamp; see HANDOFF 2026-10-16 (evening).
 
 Checked in simulation against the real pairing code (80 ms, 5 ms and 0.7 s
 stalls, with and without interrupts): every sample, in order, within 1 µs.

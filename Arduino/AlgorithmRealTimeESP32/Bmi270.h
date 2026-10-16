@@ -25,9 +25,12 @@
 //   FIFO             accel only, headerless (6 bytes/frame), filtered data
 //                    (the same filter path as the data registers, so the
 //                    group delay does not change), overwrite when full.
-//                    6144 bytes = 1024 frames = 1.28 s at 800 Hz. Every
-//                    sample goes through it, so a main loop that stalls for
-//                    up to ~1 s loses nothing; see serviceSampling().
+//                    MEASURED 16/10: it saturates at 337 frames (~2 KB),
+//                    0.42 s at 800 Hz - not the 1024 frames / 1.28 s this
+//                    file assumed until then. Every sample goes through it,
+//                    so a loop that stalls for less than that loses nothing;
+//                    a longer stall overwrites the oldest frames, which
+//                    pullFifo() detects (stamps outnumber frames) and resyncs.
 // ---------------------------------------------------------------------------
 #include <Wire.h>
 #include "Pins.h"
@@ -72,7 +75,7 @@ static const uint8_t  BMI_FIFO_DOWNS_VALUE = 0x80;   // acc_fifo_filt_data, no d
 static const uint8_t  BMI_FIFO_CONF0_VALUE = 0x00;   // overwrite oldest when full, no sensortime
 static const uint8_t  BMI_FIFO_CONF1_VALUE = 0x40;   // acc_en, header off
 static const uint16_t BMI_FIFO_FRAME_BYTES = 6;
-static const uint16_t BMI_FIFO_MAX_FRAMES  = 6144 / BMI_FIFO_FRAME_BYTES;
+static const uint16_t BMI_FIFO_MAX_FRAMES  = 337;    // measured saturation, not the datasheet's
 // Frames per FIFO_DATA read: Wire's buffer on this core is 128 bytes.
 static const uint16_t BMI_FIFO_READ_FRAMES = 20;
 

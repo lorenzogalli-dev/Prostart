@@ -133,8 +133,9 @@ class _TimeHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final rt = run.reactionSeconds;
+    const red = Color(0xFFFF6B5C);
     return GlassPanel(
-      tint: AppColors.cyan,
+      tint: run.falseStart ? red : AppColors.cyan,
       padding: const EdgeInsets.all(AppSpacing.xl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -154,6 +155,10 @@ class _TimeHero extends StatelessWidget {
               ],
             ],
           ),
+          if (run.falseStart) ...[
+            const SizedBox(height: AppSpacing.md),
+            const Tag('FALSE START', icon: Icons.close_rounded, color: red),
+          ],
           const SizedBox(height: AppSpacing.lg),
           HeroNumber(
             value: run.officialSeconds.toStringAsFixed(2),
@@ -168,10 +173,10 @@ class _TimeHero extends StatelessWidget {
             children: [
               Expanded(
                 child: _Metric(
-                  label: 'Reaction',
+                  label: run.falseStart ? 'False start' : 'Reaction',
                   value: rt == null ? '–' : rt.toStringAsFixed(3),
                   unit: rt == null ? '' : 's',
-                  color: AppColors.accent,
+                  color: run.falseStart ? red : AppColors.accent,
                 ),
               ),
               Expanded(

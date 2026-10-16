@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 
+import 'run_store.dart';
+
 import 'start_unit/ble_start_unit.dart';
 import 'start_unit/protocol.dart';
 import 'start_unit/simulated_start_unit.dart';
@@ -10,6 +12,10 @@ class PhotofinishRun {
   final DateTime when;
   final double totalSeconds;
   final double? reactionSeconds;
+
+  /// The board judged this start a false start: the time stands, the start
+  /// does not. [reactionSeconds] is then the signed false-start time.
+  final bool falseStart;
   final double distanceM;
 
   /// JPEG of the crossing frame, line and torso drawn in.
@@ -31,6 +37,7 @@ class PhotofinishRun {
     required this.when,
     required this.totalSeconds,
     required this.reactionSeconds,
+    this.falseStart = false,
     required this.distanceM,
     required this.image,
     required this.syncFloorUs,
@@ -51,8 +58,9 @@ class ReactionRun {
   const ReactionRun(this.when, this.result);
 }
 
-/// App-wide state: which start unit is in use and this session's runs. Kept
-/// in memory only; nothing is stored between launches yet.
+/// App-wide state: which start unit is in use and this session's runs. The
+/// session lists are in memory; each start's recording is saved as a CSV by
+/// RunStore as soon as the board has sent it.
 class AppState extends ChangeNotifier {
   AppState._();
   static final instance = AppState._();
@@ -62,6 +70,10 @@ class AppState extends ChangeNotifier {
 
   final reactions = <ReactionRun>[];
   final photofinishes = <PhotofinishRun>[];
+
+  /// The last recording saved, and why the last one could not be.
+  String? lastSavedFile;
+  String? saveError;
 
   /// Race distance for the photofinish, set on its screen.
   double distanceM = 30;
@@ -85,11 +97,24 @@ class AppState extends ChangeNotifier {
   }
 
   void _listenForResults() {
-    _unit.events.listen((e) {
+    final unit = _unit;
+    unit.events.listen((e) {
       if (e is ResultEvent) {
         reactions.add(ReactionRun(DateTime.now(), e));
         notifyListeners();
       }
+    });
+    unit.recordings.listen((r) async {
+      try {
+        final f = await RunStore.instance.save(r);
+        if (f != null) lastSavedFile = f.uri.pathSegments.last;
+        saveError = null;
+        // Only once it is on disk may the board let it go.
+        await unit.ackRecording(r);
+      } catch (e) {
+        saveError = 'Could not save the recording: $e';
+      }
+      notifyListeners();
     });
   }
 

@@ -55,6 +55,8 @@ class ReactionScreen extends StatelessWidget {
                       run: app.reactions.last,
                       session: app.reactions,
                     ),
+                    const SizedBox(height: AppSpacing.md),
+                    _RecordingLine(unit: unit, app: app),
                     const SizedBox(height: AppSpacing.lg),
                     _NextStartHint(unit: unit),
                   ] else
@@ -323,6 +325,55 @@ class _SimButton extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Where this start's recording is: coming from the board, saved, or lost.
+class _RecordingLine extends StatelessWidget {
+  final StartUnit unit;
+  final AppState app;
+  const _RecordingLine({required this.unit, required this.app});
+
+  @override
+  Widget build(BuildContext context) {
+    if (unit is SimulatedStartUnit) return const SizedBox.shrink();
+    final (IconData icon, String text, Color color) = switch (unit.recordingState) {
+      RecordingState.receiving => (
+        Icons.downloading_rounded,
+        'Receiving the recording…',
+        AppColors.textSecondary,
+      ),
+      RecordingState.received when app.saveError != null => (
+        Icons.error_outline_rounded,
+        app.saveError!,
+        AppColors.gold,
+      ),
+      RecordingState.received => (
+        Icons.check_circle_rounded,
+        'Recording saved',
+        AppColors.accent,
+      ),
+      RecordingState.failed => (
+        Icons.error_outline_rounded,
+        'Recording not received - reconnect to fetch it',
+        AppColors.gold,
+      ),
+      RecordingState.none => (
+        Icons.hourglass_empty_rounded,
+        'Waiting for the recording…',
+        AppColors.textFaint,
+      ),
+    };
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(icon, size: 18, color: color),
+        const SizedBox(width: 6),
+        Flexible(
+          child: Text(text, style: TextStyle(fontSize: 14, color: color)),
+        ),
+      ],
     );
   }
 }

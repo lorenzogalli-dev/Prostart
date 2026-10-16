@@ -3,7 +3,6 @@
 #include "StartDetector.h"
 #include "AicPicker.h"
 #include "Display.h"
-#include "Storage.h"
 #include "Ble.h"
 #include "esp_sleep.h"
 #include "esp_system.h"
@@ -25,7 +24,7 @@ static StartDetector detector;
 //     and ISR-safe, so the loop's latency in noticing the flag is gone.
 //   - Buzzer: nRF PWM -> LEDC + GPIO-matrix inversion (still two register
 //     writes at the instant of the beep). Pins rest HIGH, not LOW.
-//   - Display: mbed::SPI -> SPIClass. Storage: QSPI -> internal flash.
+//   - Display: mbed::SPI -> SPIClass. Storage: QSPI -> internal flash (v6: none).
 //   - Off: nRF System OFF -> ESP32 light sleep, woken by the button (on
 //     GPIO9, which cannot wake deep sleep), then a restart.
 //   - Dump header gains SENSOR,bmi270 and ODR,800 so a capture says where it
@@ -33,6 +32,18 @@ static StartDetector detector;
 //   - Samples come out of the BMI270's FIFO, not its data registers, and
 //     INT1 is only a clock (2026-10-07, after the first block starts lost 63
 //     samples at "set" and 3 every 2 s to loop stalls). See serviceSampling().
+//   - v6 (2026-10-16): NOTHING IS STORED ON THE BOARD ANY MORE. The flash
+//     write after every start (~0.6 s, the CPU stopped) is gone; the run is
+//     sent to the app over BLE (Ble.h, "data"/"ctrl") and kept in RAM until
+//     the app confirms it or the next start's "set". No app, no record.
+//     Nothing may block loop(): serial never waits (TX timeout 0, the dump is
+//     sent a few rows per pass), because with a computer plugged in and no
+//     terminal open every blocked write cost 100 ms - beeps stretched and the
+//     result came seconds late. And every verdict is checked first: samples
+//     aligned with "set" and "go", no gap in the window, or it is UNUSABLE
+//     (checkTiming) - never a wrong result in silence. Background: on 16/10
+//     a stall longer than the FIFO's 0.42 s shifted whole starts 0.4-1.05 s
+//     and good starts read as false starts.
 // StartDetector.h and AicPicker.h are byte-identical to the XIAO's. Wiring,
 // build and what still has to be measured: INFO.md in this folder.
 // Below, the XIAO history is kept as it was; "D0", "QSPI", "System OFF" in it
@@ -127,16 +138,13 @@ static StartDetector detector;
 // 'd' dumps the whole ring immediately (no sequence, no markers) - this is
 //     what verify_rate.py uses for its rate/integrity check.
 // 'p' prints one immediate reading, independent of the above.
-// 'L' lists the runs stored on flash: FILES,<n>,<free slots> then one
-//     FILE,<id>,<samples> each, oldest first, then FILES_END.
-// 'F' replays every stored run as a normal DUMP_START..DUMP_END block (with a
-//     STORED,<id> line), then FETCH_END. pull_captures.py drives this.
-// 'X' erases every stored run: ERASED,<n>.
 // 'T<unix seconds>' sets the time runs are stamped with (WALLCLOCK), until
-//     the next power-off. capture.py and pull_captures.py send it.
-// 'E' diagnostic: erases the EMPTY slots and reports erase timings.
+//     the next power-off. capture.py sends it.
+// 'S<ms>' / 'O' (idle only): the FIFO-overwrite regression test, see there.
+// v6: 'L', 'F', 'X', 'E' are gone with the flash storage.
 //
-// One second after "go" the board dumps the window by itself:
+// One second after "go" the board dumps the window by itself - only if a host
+// is reading (free room in the TX buffer), a few rows per loop pass:
 //   DUMP_START,<n>
 //   ON,<t_us or 0>        beep 1, "on your marks"
 //   SET,<t_us or 0>       beep 2, "set"
@@ -149,7 +157,7 @@ static StartDetector detector;
 //   CLOCKSTEP,<us>        measured micros() resolution of this build
 //   GAPS,<n>              sample intervals over 1.5x nominal since the button
 //   MAXGAP,<us>           the longest of them
-//   STORED,<id>           this run's id on the flash (absent: not stored)
+//   RUN,<id>              this run's id (the one the app gets it under)
 //   WALLCLOCK,<unix s>    when the start happened (absent: board had no time)
 //   <n CSV rows, t_us,x_g,y_g,z_g, full ODR, no decimation>
 //   DUMP_END
@@ -367,10 +375,10 @@ static bool randomSeeded = false;
 // window is measured from, in both directions.
 static uint32_t setSampleIdx = 0;
 
-// What the board decided, kept so dumpRecording() can write it into the CSV.
+// What the board decided, kept so the dump and the app get it with the run.
 // The verdict is a property of THIS run, taken by the firmware at the instant
 // it had the data - not something a host should have to re-derive later. See
-// the note on ARM in dumpRecording().
+// the note on ARM in emitDumpHeader().
 // Drawn once per attempt, at "set": the ceiling has to be a single instant for
 // the whole run, not re-rolled on every poll of the arming gate.
 static uint32_t goCapUs = 0;
@@ -389,7 +397,7 @@ static uint32_t idleSampleIndex = 0;
 // Every data-ready edge, stamped by the ISR into a queue: one stamp per
 // sample the BMI270 wrote to its FIFO. The loop pairs them up oldest first.
 // Counters are free-running; the slot is the counter mod STAMP_Q.
-static const uint32_t STAMP_Q = 1024;              // power of 2, ~1.28 s
+static const uint32_t STAMP_Q = 1024;              // power of 2, ~1.28 s (the FIFO: 0.42 s)
 static volatile uint32_t stampQ[STAMP_Q];
 static volatile uint32_t stampHead = 0;            // ISR only
 static uint32_t stampTail = 0;                     // loop only
@@ -431,8 +439,39 @@ static uint32_t seqStartUs = 0;
 // no clock that survives power-off, so a session started on a power bank
 // records its runs without a date rather than with a wrong one.
 static uint32_t epochAtBoot = 0;
-// Id the last finished run got on the flash, 0 if it was not stored.
-static uint32_t lastStoredId = 0;
+// v6: the last run, held in the ring for the app until it ACKs, or until the
+// next start's "set" (see serviceTransfer). While holdRun or holdDump is set
+// and no start runs, new samples are not written to the ring - they are still
+// read and paired, so the FIFO and the stamps never drift.
+struct CaptureMeta {
+  uint32_t id;               // run id, 0 = none
+  uint32_t n;                // sample rows that follow
+  uint32_t onT, setT, goT;   // 0 = not captured
+  uint32_t preroll;
+  uint32_t dropped, gaps, maxGapUs, clockStep;
+  uint8_t  truncated, armValid, armCapped, hasVerdict;
+  uint32_t armT;
+  float    armMg, rtMs;
+  uint32_t onsetUs;
+  char     verdict[24];
+  uint32_t wallclock;        // unix time of the start, 0 = board had no time
+};
+struct HeldRun {
+  bool valid, acked;
+  uint32_t from;             // ring index of its first sample
+  CaptureMeta meta;
+};
+static HeldRun held = {};
+static bool holdRun = false, holdDump = false;
+// Random per power-up: run ids restart at 1, (bootId, id) never repeats.
+static uint32_t bootId = 0;
+static uint32_t runCounter = 0;
+
+// The verdict's own check (checkTiming): set at "set", read at the result.
+static int32_t setLagUs = 0;
+static uint32_t resyncsAtSet = 0;
+static bool timingOk = true;
+static const char* timingWhy = nullptr;
 // READY or RESULT, when no sequence is running.
 static bool showingResult = false;
 // True while the press that powered the board on is still being held: its
@@ -500,7 +539,7 @@ static void IRAM_ATTR drdyIsr() {
 // the next frame and the next stamp belong to the same edge. Off by one here
 // would put every timestamp one period (1.25 ms) late, so the window is
 // checked rather than assumed: the flush must land before the next edge.
-// Also the recovery after either queue overran (a loop stalled > ~1.2 s,
+// Also the recovery after either queue overran (a loop stalled > ~0.42 s,
 // which only the flash write and the dump do, both outside a start).
 static bool fifoResync() {
   pendHead = pendCount = 0;
@@ -562,11 +601,13 @@ void setup() {
   // USB Serial/JTAG (HWCDC): the baud rate is ignored, USB sets the speed.
   // A larger TX buffer keeps the dump flowing in bigger USB packets.
   Serial.setTxBufferSize(4096);
-  // Bounded blocking. Plugged into a computer with no terminal open, the C3's
-  // USB keeps saying "connected" and a full buffer would block each write for
-  // 20 x this timeout; the XIAO's core dropped the data instead. See also
-  // serialRoomFor() on the dump path.
-  Serial.setTxTimeoutMs(5);
+  // NEVER block. Plugged into a computer with no terminal open, the C3's USB
+  // keeps saying "connected" and every write into a full buffer waited
+  // 20 x the timeout: 100 ms each at 5 ms, measured 16/10 as beeps stretched
+  // by ~200 ms and a result shown seconds after "go". With 0 a write that does
+  // not fit is dropped, as the XIAO's core did. The dump checks for room
+  // itself (serviceDump).
+  Serial.setTxTimeoutMs(0);
   Serial.begin(921600);
   // Native USB CDC: Serial only becomes true once a host opens the port.
   // Bounded wait so the banner below is not lost right after an upload - and
@@ -634,20 +675,7 @@ void setup() {
     Serial.println("!! Not expected on the esp32 core (esp_timer is 1 us): check the build.");
   }
 
-  if (storageBegin()) {
-    Serial.print("flash: JEDEC ");
-    Serial.print(jedecId, HEX);
-    Serial.print(", ");
-    Serial.print(storageCount());
-    Serial.print("/");
-    Serial.print(SLOT_COUNT);
-    Serial.print(" run slots used, next id ");
-    Serial.println(nextRunId);
-  } else {
-    Serial.print("!! flash: ");
-    Serial.print(flashErrStep);
-    Serial.println(" - runs will NOT be stored");
-  }
+  bootId = esp_random();
 
   // Without BLE the board still runs a start exactly as before: the app is a
   // mirror, never a requirement.
@@ -666,7 +694,7 @@ void setup() {
   Serial.println(" Hz");
   Serial.println("  button -> 3-2-1 -> MARKS -> 20-25s -> SET -> armed+0.7-1.5s -> GO -> 1s -> dump");
   Serial.println("  'a' or two presses within 2 s abort. 'd' dumps the ring as-is.");
-  Serial.println("  Hold the button 1.5 s to power off. 'L' list / 'F' fetch / 'X' erase stored runs.");
+  Serial.println("  Hold the button 1.5 s to power off. Runs are not stored: the app saves them.");
 
   // Still holding the press that switched it on: its release is not a command.
   buttonSwallow = (digitalRead(BUTTON_PIN) == LOW);
@@ -686,18 +714,6 @@ static inline float rawToG(int16_t raw) {
   return (float)raw * ACCEL_SCALE_G_PER_LSB;
 }
 
-// Waits until the USB buffer can take n more bytes. False if nobody has drained
-// it for SERIAL_STALL_MS: then no host is reading, and a 6000-row dump would
-// otherwise hold the board for minutes (see Serial.setTxTimeoutMs in setup).
-static const uint32_t SERIAL_STALL_MS = 200;
-static bool serialRoomFor(int n) {
-  uint32_t t0 = millis();
-  while (Serial.availableForWrite() < n) {
-    if (millis() - t0 > SERIAL_STALL_MS) return false;
-    delay(1);
-  }
-  return true;
-}
 static const int CSV_ROW_MAX = 48;
 
 static void printCsvRow(uint32_t t_us, int16_t rawX, int16_t rawY, int16_t rawZ) {
@@ -732,9 +748,6 @@ static void buildLiveMeta(bool wholeRing, CaptureMeta* m, uint32_t* fromOut) {
   if (truncated) from = oldest;
 
   memset(m, 0, sizeof(*m));
-  m->magic = CAPTURE_MAGIC;
-  m->version = CAPTURE_VERSION;
-  m->metaSize = sizeof(CaptureMeta);
   m->n = recWritten - from;
   m->onT = onCaptured ? onT : 0;
   m->setT = setCaptured ? setT : 0;
@@ -795,7 +808,7 @@ static void emitDumpHeader(const CaptureMeta& m) {
   Serial.print("MAXGAP,");
   Serial.println(m.maxGapUs);
   if (m.id != 0) {
-    Serial.print("STORED,");
+    Serial.print("RUN,");
     Serial.println(m.id);
   }
   if (m.wallclock != 0) {
@@ -826,104 +839,47 @@ static void emitDumpHeader(const CaptureMeta& m) {
   }
 }
 
-static void dumpRecording(bool wholeRing, uint32_t storedId) {
-  CaptureMeta m;
-  uint32_t from;
-  buildLiveMeta(wholeRing, &m, &from);
-  m.id = storedId;
+// The dump, a few rows per loop pass and only into free TX room: nothing here
+// waits. It starts only if a host is draining the buffer (lots of room), and
+// gives up when the host stops reading. The ring is held meanwhile.
+static const int DUMP_ROWS_PER_PASS = 8;
+static const uint32_t DUMP_GIVE_UP_MS = 500;
+static const int DUMP_START_ROOM = 2048;   // the header plus some rows
+struct DumpState { bool active; uint32_t next, to, lastProgressMs; };
+static DumpState dump = {};
+
+static void startDump(const CaptureMeta& m, uint32_t from) {
+  if (Serial.availableForWrite() < DUMP_START_ROOM) return;   // nobody reading
   emitDumpHeader(m);
-  for (uint32_t i = from; i < recWritten; i++) {
-    if (!serialRoomFor(CSV_ROW_MAX)) return;   // no host: the run is on flash anyway
-    uint32_t slot = i % MAX_REC_SAMPLES;
+  dump.active = true;
+  dump.next = from;
+  dump.to = from + m.n;
+  dump.lastProgressMs = millis();
+  holdDump = true;
+}
+
+static void stopDump() {
+  dump.active = false;
+  holdDump = false;
+}
+
+static void serviceDump() {
+  if (!dump.active) return;
+  int rows = 0;
+  while (rows < DUMP_ROWS_PER_PASS && dump.next < dump.to &&
+         Serial.availableForWrite() >= CSV_ROW_MAX) {
+    uint32_t slot = dump.next % MAX_REC_SAMPLES;
     printCsvRow(recT[slot], recX[slot], recY[slot], recZ[slot]);
+    dump.next++;
+    rows++;
   }
-  Serial.println("DUMP_END");
-}
-
-// Writes the same window dumpRecording(false) prints to the flash. Returns the
-// run id, 0 on failure. Blocks for ~1 s (mostly sector erases): called on the
-// result screen, where nothing is being measured and the display is drawn.
-static uint32_t storeRun() {
-  if (!storageReady) return 0;
-  CaptureMeta m;
-  uint32_t from;
-  buildLiveMeta(false, &m, &from);
-  if (m.n > SLOT_MAX_SAMPLES) {
-    // Never expected (a start dumps ~6.5 s, a slot holds ~9.5 s); if it
-    // happens, keep the end - "go" and the push-off - and say so.
-    uint32_t cut = m.n - SLOT_MAX_SAMPLES;
-    from += cut;
-    m.n = SLOT_MAX_SAMPLES;
-    m.preroll = (m.preroll > cut) ? m.preroll - cut : 0;
-    m.truncated = 1;
+  if (rows) dump.lastProgressMs = millis();
+  if (dump.next >= dump.to && Serial.availableForWrite() >= 16) {
+    Serial.println("DUMP_END");
+    stopDump();
+  } else if (millis() - dump.lastProgressMs > DUMP_GIVE_UP_MS) {
+    stopDump();   // the host stopped reading: the run is with the app anyway
   }
-  m.id = nextRunId;
-
-  uint32_t slot = storagePickSlot();
-  uint32_t base = slot * SLOT_BYTES;
-  uint32_t bytes = sizeof(CaptureMeta) + m.n * sizeof(SampleRec);
-  slotId[slot] = 0;   // whatever was there is gone from here on
-  if (!flashErase(base, (bytes + SECTOR_BYTES - 1) / SECTOR_BYTES * SECTOR_BYTES)) return 0;
-
-  // Samples first, header last (see Storage.h).
-  SampleRec* chunk = (SampleRec*)flashBuf;
-  const uint32_t perChunk = sizeof(flashBuf) / sizeof(SampleRec);
-  uint32_t addr = base + sizeof(CaptureMeta);
-  uint32_t k = 0;
-  for (uint32_t i = 0; i < m.n; i++) {
-    uint32_t slotIdx = (from + i) % MAX_REC_SAMPLES;
-    chunk[k].t = recT[slotIdx];
-    chunk[k].x = recX[slotIdx];
-    chunk[k].y = recY[slotIdx];
-    chunk[k].z = recZ[slotIdx];
-    if (++k == perChunk || i + 1 == m.n) {
-      uint32_t len = k * sizeof(SampleRec);
-      memset((uint8_t*)flashBuf + len, 0xFF, sizeof(flashBuf) - len);   // word padding
-      if (!flashWrite(addr, flashBuf, len)) return 0;
-      addr += len;
-      k = 0;
-    }
-  }
-  if (!flashWrite(base, &m, sizeof(m))) return 0;
-
-  // Read the header back: a write that "succeeded" into a flash that ignored
-  // it (write-protected, wrong mode) must not be reported as saved.
-  CaptureMeta check;
-  if (!flashRead(base, &check, sizeof(check))) return 0;
-  if (check.magic != CAPTURE_MAGIC || check.id != m.id) {
-    flashFail("verify", (int)check.magic, base);
-    return 0;
-  }
-  slotId[slot] = m.id;
-  slotN[slot] = m.n;
-  nextRunId++;
-  return m.id;
-}
-
-// Replays one stored run as a normal dump. False if it could not be read.
-static bool emitStoredRun(uint32_t slot) {
-  uint32_t base = slot * SLOT_BYTES;
-  CaptureMeta m;
-  if (!flashRead(base, &m, sizeof(m)) || m.magic != CAPTURE_MAGIC ||
-      m.metaSize != sizeof(CaptureMeta) || m.n > SLOT_MAX_SAMPLES) {
-    return false;
-  }
-  emitDumpHeader(m);
-  SampleRec* chunk = (SampleRec*)flashBuf;
-  const uint32_t perChunk = sizeof(flashBuf) / sizeof(SampleRec);
-  uint32_t addr = base + sizeof(CaptureMeta);
-  for (uint32_t done = 0; done < m.n; ) {
-    uint32_t k = (m.n - done < perChunk) ? (m.n - done) : perChunk;
-    if (!flashRead(addr, flashBuf, k * sizeof(SampleRec))) break;   // count mismatch says so
-    for (uint32_t i = 0; i < k; i++) {
-      if (!serialRoomFor(CSV_ROW_MAX)) return false;
-      printCsvRow(chunk[i].t, chunk[i].x, chunk[i].y, chunk[i].z);
-    }
-    addr += k * sizeof(SampleRec);
-    done += k;
-  }
-  Serial.println("DUMP_END");
-  return true;
 }
 
 // One sample, timestamped, into the ring and the detector.
@@ -937,15 +893,17 @@ static void storeSample(uint32_t t, int16_t rawX, int16_t rawY, int16_t rawZ) {
   }
   prevSampleT = t;
 
-  // The ring fills in every state, always - that IS the pre-roll. There is no
-  // "start recording" step any more, only a "set" boundary marked in data
-  // that is already being kept.
-  uint32_t slot = recWritten % MAX_REC_SAMPLES;
-  recT[slot] = t;
-  recX[slot] = rawX;
-  recY[slot] = rawY;
-  recZ[slot] = rawZ;
-  recWritten++;
+  // The ring fills in every state - that IS the pre-roll. There is no "start
+  // recording" step, only a "set" boundary marked in data already kept.
+  // v6: except while idle with a run held for the app or a dump going out.
+  if (seqState != SEQ_IDLE || !(holdRun || holdDump)) {
+    uint32_t slot = recWritten % MAX_REC_SAMPLES;
+    recT[slot] = t;
+    recX[slot] = rawX;
+    recY[slot] = rawY;
+    recZ[slot] = rawZ;
+    recWritten++;
+  }
 
   // Causal, real-time detection once the "set" command has been given. Fed the
   // same samples the ring stores, so the on-device verdict and the dumped CSV
@@ -957,7 +915,7 @@ static void storeSample(uint32_t t, int16_t rawX, int16_t rawY, int16_t rawZ) {
   // Preview only while no sequence is running: during a start, serial stays
   // silent apart from the SEQ lines, so nothing can interleave with the run
   // or with the dump that follows it.
-  if (seqState == SEQ_IDLE) {
+  if (seqState == SEQ_IDLE && !dump.active) {   // never inside a dump's rows
     idleSampleIndex++;
     if (idleSampleIndex % STREAM_DECIMATE == 0) {
       // Wait for room for the whole row before printing, same reasoning as
@@ -971,13 +929,25 @@ static void storeSample(uint32_t t, int16_t rawX, int16_t rawY, int16_t rawZ) {
 }
 
 // Pulls whatever the FIFO holds into the pending queue. False if it overran.
+// Stamps that may legitimately wait without a frame: edges already accounted
+// for or off the period grid, which the pairing discards (normally 0-1).
+static const uint32_t STAMP_SLACK = 8;
+
 static bool pullFifo() {
+  // Read before the length: a frame landing in between can only raise n.
+  uint32_t waiting = stampHead - stampTail;
   int32_t n = bmiFifoFrames();
   lastFifoPollUs = micros();
-  if (n <= 0) return true;
-  // Full means the oldest frames were overwritten: frames and stamps no
-  // longer line up, and the only honest fix is to start again.
-  if ((uint32_t)n >= BMI_FIFO_MAX_FRAMES - 1) return false;
+  if (n < 0) return true;                          // bus hiccup: try next loop
+  // More stamps than frames means the FIFO overwrote its oldest frames (a
+  // loop stall > 0.42 s, e.g. the flash write + dump after a start with no
+  // host reading). Pairing on would give every later sample the stamp of an
+  // older one - on 16/10 that shifted whole starts 0.4-1.05 s early and made
+  // good starts false starts. The only honest fix is to start again.
+  if (waiting > (uint32_t)n + pendCount + STAMP_SLACK) return false;
+  if (n == 0) return true;
+  // Full: the oldest frames may have just been overwritten.
+  if ((uint32_t)n >= BMI_FIFO_MAX_FRAMES) return false;
   while (n > 0 && pendCount < PEND_Q) {
     uint16_t room = PEND_Q - pendCount;
     uint16_t k = (uint16_t)min((int32_t)BMI_FIFO_READ_FRAMES, n);
@@ -1008,7 +978,7 @@ static const uint32_t STAMP_PHASE_TOL_US = 200;
 // edge and lost every sample the loop was too busy to read: 63 in the ~80 ms
 // the detector's pre-roll replay takes at "set" (no FPU on the C3), and 3
 // every 2.000 s to something outside this sketch. Now the sensor keeps every
-// sample until it is read (1.28 s of room) and the ISR keeps every edge's
+// sample until it is read (0.42 s of room, measured) and the ISR keeps every edge's
 // stamp, so a stall only delays samples, it cannot lose them.
 //
 // Pairing, oldest first: a stamp k sensor periods after the last one is
@@ -1370,6 +1340,192 @@ static void evaluateAndReportResults() {
   Serial.println();
 }
 
+// ===========================================================================
+// v6: the verdict's own check, and the run's way to the app
+// ===========================================================================
+
+// How far the newest sample may sit from "set" / from now, and the largest
+// step between two samples, before the recording is not trusted. Normal: set
+// within -5..+1.3 ms (the drain right after the beep), tail 0-3 ms, steps one
+// period (an interpolated sample too). The 16/10 overwrite put set 80-1050 ms
+// off; any resync leaves a step of tens of ms.
+static const int32_t TIMING_TOL_US = 10000;
+static const uint32_t TIMING_MAX_STEP_US = 3 * SAMPLE_PERIOD_US;
+
+// Before any verdict is shown: is the recording what the detector believes it
+// is? Fails safe - an UNUSABLE run is a nuisance, a wrong one is the product
+// lying. Reads only; the detector and its result are untouched.
+static void checkTiming(uint32_t from) {
+  timingOk = false;
+  int32_t tailLag = (int32_t)(micros() - lastStampT);
+  if (setLagUs > TIMING_TOL_US || setLagUs < -TIMING_TOL_US) {
+    timingWhy = "timing: set not aligned";
+  } else if (tailLag > TIMING_TOL_US || tailLag < -1000) {
+    timingWhy = "timing: go not aligned";
+  } else if (fifoResyncs != resyncsAtSet) {
+    timingWhy = "timing: sampling restarted";
+  } else {
+    timingWhy = nullptr;
+    for (uint32_t i = from + 1; i < recWritten; i++) {
+      uint32_t d = recT[i % MAX_REC_SAMPLES] - recT[(i - 1) % MAX_REC_SAMPLES];
+      if (d == 0 || d > TIMING_MAX_STEP_US) {
+        timingWhy = "timing: gap in the samples";
+        break;
+      }
+    }
+    if (timingWhy == nullptr) timingOk = true;
+  }
+  Serial.print("CHECK,");
+  Serial.print(timingOk ? "ok" : timingWhy);
+  Serial.print(",set_lag_us,"); Serial.print(setLagUs);
+  Serial.print(",tail_lag_us,"); Serial.println(tailLag);
+}
+
+// Sending the held run: one packet per loop slot, paced, sent again if the
+// stack had no buffer. Never from "set" on: only idle, countdown and "on your
+// marks", where nothing is judged.
+static const uint32_t XFER_GAP_US = 4000;       // between two packets
+static const uint32_t XFER_BACKOFF_US = 20000;  // after a full stack
+static const uint8_t XFER_MAX_PER_PACKET = 24;
+struct Transfer {
+  bool active, info, noRun;
+  uint32_t next, to;          // sample indices within the run
+  uint32_t nextAtUs;
+};
+static Transfer xfer = {};
+
+static bool heldIntact(uint32_t i) {
+  uint32_t oldest = (recWritten > MAX_REC_SAMPLES) ? (recWritten - MAX_REC_SAMPLES) : 0;
+  return held.valid && held.from + i >= oldest;
+}
+
+static void startTransfer(uint32_t from, uint32_t to) {
+  xfer.active = true;
+  xfer.info = true;
+  xfer.next = from;
+  xfer.to = (to > held.meta.n) ? held.meta.n : to;
+  xfer.nextAtUs = micros();
+}
+
+static void handleCtrl(const uint8_t* r, uint8_t n) {
+  uint16_t id = (n >= 3) ? (uint16_t)(r[1] | (r[2] << 8)) : 0;
+  if (r[0] == BLE_C_GET) {
+    uint32_t from = (n >= 5) ? (uint32_t)(r[3] | (r[4] << 8)) : 0;
+    uint32_t to = (n >= 7) ? (uint32_t)(r[5] | (r[6] << 8)) : 0xFFFF;
+    bool ok = held.valid && (id == 0 || id == (uint16_t)held.meta.id) && heldIntact(0) &&
+              seqState <= SEQ_WAIT_SET;
+    if (ok) startTransfer(from, to);
+    else xfer.noRun = true;
+  } else if (r[0] == BLE_C_ACK && held.valid && id == (uint16_t)held.meta.id) {
+    held.acked = true;
+    holdRun = false;            // the ring may move on
+    if (showingResult) updateResultFooter();
+  }
+}
+
+static void putLE(uint8_t* p, uint32_t v, int bytes) {
+  for (int i = 0; i < bytes; i++) p[i] = (uint8_t)(v >> (8 * i));
+}
+
+static uint8_t verdictCode(const char* v) {
+  if (v != nullptr && strcmp(v, "valid start") == 0) return BLE_V_VALID;
+  if (v != nullptr && strcmp(v, "FALSE START") == 0) return BLE_V_FALSE_START;
+  if (v != nullptr && strcmp(v, "no movement") == 0) return BLE_V_NO_MOVEMENT;
+  return BLE_V_UNUSABLE;
+}
+
+// One step of the transfer. Called in loop()'s BLE slot when blePump() had
+// nothing more urgent (pongs and events always go first).
+static void serviceTransfer() {
+  uint8_t req[8];
+  uint8_t rn = bleTakeCtrl(req);
+  if (rn) handleCtrl(req, rn);
+
+  uint8_t p[244];
+  if (xfer.noRun) {
+    p[0] = BLE_D_NO_RUN;
+    if (bleDataSend(p, 1) || !bleConnected) xfer.noRun = false;
+    return;
+  }
+  if (!xfer.active) return;
+  if (seqState > SEQ_WAIT_SET || !bleConnected) {
+    xfer.active = false;
+    if (showingResult) updateResultFooter();
+    return;
+  }
+  uint32_t now = micros();
+  if ((int32_t)(now - xfer.nextAtUs) < 0) return;
+  uint16_t room = bleDataRoom();
+  if (room > sizeof(p)) room = sizeof(p);
+  if (room < 51) {                     // MTU not negotiated up yet
+    xfer.nextAtUs = now + XFER_BACKOFF_US;
+    return;
+  }
+  const CaptureMeta& m = held.meta;
+  uint16_t id = (uint16_t)m.id;
+  uint16_t len;
+  if (xfer.info) {
+    memset(p, 0, 51);
+    p[0] = BLE_D_INFO;
+    putLE(&p[1], bootId, 4);
+    putLE(&p[5], id, 2);
+    putLE(&p[7], m.n, 2);
+    putLE(&p[9], m.preroll, 2);
+    putLE(&p[11], m.onT, 4);
+    putLE(&p[15], m.setT, 4);
+    putLE(&p[19], m.goT, 4);
+    putLE(&p[23], m.armValid ? m.armT : 0, 4);
+    putLE(&p[27], (uint32_t)lroundf(m.armMg * 100.0f), 2);
+    p[29] = (m.armValid ? 1 : 0) | (m.armCapped ? 2 : 0) | (m.truncated ? 4 : 0) | (timingOk ? 8 : 0);
+    p[30] = verdictCode(m.hasVerdict ? m.verdict : nullptr);
+    putLE(&p[31], (uint32_t)(int32_t)lroundf(m.rtMs * 1000.0f), 4);
+    putLE(&p[35], m.onsetUs, 4);
+    putLE(&p[39], m.dropped > 0xFFFF ? 0xFFFF : m.dropped, 2);
+    putLE(&p[41], m.gaps > 0xFFFF ? 0xFFFF : m.gaps, 2);
+    putLE(&p[43], m.maxGapUs, 4);
+    putLE(&p[47], m.clockStep, 2);
+    putLE(&p[49], ACCEL_ODR_HZ, 2);
+    len = 51;
+  } else if (xfer.next < xfer.to) {
+    if (!heldIntact(xfer.next)) {      // overwritten after the next start
+      xfer.active = false;
+      xfer.noRun = true;
+      return;
+    }
+    uint32_t k = (room - 5) / 10;
+    if (k > XFER_MAX_PER_PACKET) k = XFER_MAX_PER_PACKET;
+    if (k > xfer.to - xfer.next) k = xfer.to - xfer.next;
+    p[0] = BLE_D_SAMPLES;
+    putLE(&p[1], id, 2);
+    putLE(&p[3], xfer.next, 2);
+    for (uint32_t i = 0; i < k; i++) {
+      uint32_t slot = (held.from + xfer.next + i) % MAX_REC_SAMPLES;
+      uint8_t* q = &p[5 + 10 * i];
+      putLE(q, recT[slot], 4);
+      putLE(q + 4, (uint16_t)recX[slot], 2);
+      putLE(q + 6, (uint16_t)recY[slot], 2);
+      putLE(q + 8, (uint16_t)recZ[slot], 2);
+    }
+    len = 5 + 10 * k;
+  } else {
+    p[0] = BLE_D_END;
+    putLE(&p[1], id, 2);
+    putLE(&p[3], m.n, 2);
+    len = 5;
+  }
+  if (!bleDataSend(p, len)) {
+    xfer.nextAtUs = now + XFER_BACKOFF_US;
+    return;
+  }
+  xfer.nextAtUs = now + XFER_GAP_US;
+  if (xfer.info) xfer.info = false;
+  else if (xfer.next < xfer.to) xfer.next += (len - 5) / 10;
+  else {
+    xfer.active = false;
+    if (showingResult) updateResultFooter();
+  }
+}
+
 static void startSequence() {
   if (seqState != SEQ_IDLE) return;
   // No sensor, no start: it could only end UNUSABLE.
@@ -1387,6 +1543,10 @@ static void startSequence() {
     randomSeed(seed);
     randomSeeded = true;
   }
+  // The held run stays sendable until "set" (heldIntact guards each packet);
+  // the ring moves on from here.
+  holdRun = false;
+  if (dump.active) stopDump();
   onCaptured = setCaptured = goCaptured = false;
   droppedSamples = 0;
   gapCount = maxGapUs = 0;
@@ -1462,6 +1622,9 @@ static void serviceSequence() {
     case SEQ_WAIT_SET:
       beep(&setT, &setCaptured);
       drainSampling();
+      setLagUs = (int32_t)(setT - lastStampT);   // checkTiming: ~0 when aligned
+      resyncsAtSet = fifoResyncs;
+      if (xfer.active) xfer.active = false;     // nothing but the start from here
       // No buffer to start: the ring already holds the last ~13.9 s. "Set"
       // only records where in it the judged window begins.
       setSampleIdx = recWritten;
@@ -1486,34 +1649,32 @@ static void serviceSequence() {
     case SEQ_TAIL: {
       drainSampling();
       seqState = SEQ_IDLE;
+      holdRun = true;                     // the ring keeps this run from here
+      CaptureMeta m;
+      uint32_t from;
+      buildLiveMeta(false, &m, &from);
+      checkTiming(from);
       evaluateAndReportResults();
+      if (!timingOk) {
+        // The detector's answer is not trusted on this recording: say so.
+        lastVerdict = "UNUSABLE";
+        lastReactionMs = 0.0f;
+        lastOnsetUs = 0;
+        Serial.print("VERDICT       : UNUSABLE - "); Serial.println(timingWhy);
+      }
       bleResult();
-      blePump();   // out before the flash write, not after it
-      // Result on screen first, synchronously: the flash write below blocks
-      // for up to a second, and the person is looking at the display now.
+      blePump();   // the result first, the recording after it
+      // The run as it is now, for the app and the dump.
+      buildLiveMeta(false, &m, &from);
+      m.id = ++runCounter;
+      held.valid = true;
+      held.acked = false;
+      held.from = from;
+      held.meta = m;
+      if (bleConnected) startTransfer(0, m.n);
+      startDump(m, from);
       showResult();
-      showResultFooter("saving...");
-      displayPump(0xFFFFFFFFUL);
-      uint32_t storeT0 = millis();
-      lastStoredId = storeRun();
-      uint32_t storeMs = millis() - storeT0;
-      if (lastStoredId) {
-        Serial.print("STORE,");
-        Serial.print(lastStoredId);
-        Serial.print(','); Serial.print(storeMs); Serial.println("ms");
-      } else {
-        Serial.print("STORE,failed,"); Serial.print(flashErrStep);
-        Serial.print(','); Serial.print(flashErrCode);
-        Serial.print(",0x"); Serial.print(flashErrAddr, HEX);
-        Serial.print(','); Serial.print(storeMs); Serial.println("ms");
-      }
-      {
-        char foot[27];
-        if (lastStoredId) snprintf(foot, sizeof(foot), "#%lu saved | press: ready", (unsigned long)lastStoredId);
-        else snprintf(foot, sizeof(foot), "NOT saved | press: ready");
-        showResultFooter(foot);
-      }
-      dumpRecording(false, lastStoredId);
+      updateResultFooter();
       break;
     }
     default:
@@ -1546,10 +1707,20 @@ static void showReady() {
   queueTextCentered(40, 3, C_GREEN, "READY");
   queueTextCentered(74, 1, C_WHITE, "Press the button to");
   queueTextCentered(86, 1, C_WHITE, "begin the start sequence");
-  char line[27];
-  if (storageReady) snprintf(line, sizeof(line), "%lu run(s) on board", (unsigned long)storageCount());
-  else snprintf(line, sizeof(line), "flash error: not saving");
-  queueTextCentered(114, 1, C_GREY, line);
+  queueTextCentered(114, 1, C_GREY, appLine());
+}
+
+// A link came or went: refresh the one line that says so.
+static void serviceLinkLine() {
+  if (!bleLinkChanged) return;
+  bleLinkChanged = false;
+  if (seqState != SEQ_IDLE || !imuReady) return;
+  if (showingResult) {
+    updateResultFooter();
+  } else {
+    queueFill(0, 112, TFT_W, 10, C_BLACK);
+    queueTextCentered(114, 1, C_GREY, appLine());
+  }
 }
 
 static int countdownShown = 0;
@@ -1595,11 +1766,7 @@ static void formatSeconds(char* buf, size_t len, float ms) {
 // The verdict as the app gets it. Same strings showResult() switches on.
 static void bleResult() {
   uint8_t p[13];
-  const char* v = lastVerdict;
-  if (v != nullptr && strcmp(v, "valid start") == 0)      p[0] = BLE_V_VALID;
-  else if (v != nullptr && strcmp(v, "FALSE START") == 0) p[0] = BLE_V_FALSE_START;
-  else if (v != nullptr && strcmp(v, "no movement") == 0) p[0] = BLE_V_NO_MOVEMENT;
-  else                                                     p[0] = BLE_V_UNUSABLE;
+  p[0] = verdictCode(lastVerdict);
   blePut32(&p[1], (uint32_t)(int32_t)lroundf(lastReactionMs * 1000.0f));
   blePut32(&p[5], lastOnsetUs);
   blePut32(&p[9], goCaptured ? goT : 0);
@@ -1629,13 +1796,26 @@ static void showResult() {
   } else {
     queueTextCentered(24, 3, C_RED, "Error");
     queueTextCentered(64, 1, C_GREY,
-                      detector.fault != nullptr ? detector.fault : (v ? v : "no verdict"));
+                      !timingOk ? timingWhy
+                      : detector.fault != nullptr ? detector.fault : (v ? v : "no verdict"));
   }
 }
 
 static void showResultFooter(const char* text) {
   queueFill(0, 112, TFT_W, 8, C_BLACK);
   queueTextCentered(113, 1, C_GREY, text);
+}
+
+// Where the shown run is: on its way to the app, safely there, or nowhere.
+static void updateResultFooter() {
+  if (held.acked)        showResultFooter("saved in app | press: ready");
+  else if (xfer.active)  showResultFooter("sending to app...");
+  else if (!bleConnected) showResultFooter("no app: not saved");
+  else                   showResultFooter("not saved | press: ready");
+}
+
+static const char* appLine() {
+  return bleConnected ? "app connected" : "no app: runs not saved";
 }
 
 // ===========================================================================
@@ -1791,11 +1971,31 @@ static void handleSerial() {
     // screen too - at the bench one keypress per run is what you want.
     if (seqState == SEQ_IDLE) startSequence();
     else abortSequence("serial");
+  } else if (c == 'S' && seqState == SEQ_IDLE) {
+    // Regression test for the 16/10 FIFO-overwrite bug, idle only: 'S<ms>'
+    // stalls the loop, then prints FIFO frames vs stamps waiting; 'O' after it
+    // must show the newest stamp < 3 ms behind now (it read 647 ms before the fix).
+    uint32_t ms = Serial.parseInt();
+    if (ms > 3000) ms = 3000;
+    delay(ms);
+    uint32_t w = stampHead - stampTail;
+    int32_t n = bmiFifoFrames();
+    Serial.printf("STALL,%lu,fifo,%ld,stamps,%lu,pend,%u\n", (unsigned long)ms, (long)n,
+                  (unsigned long)w, pendCount);
+  } else if (c == 'O') {
+    // How far the newest sample's stamp is behind now (should be < 3 ms).
+    Serial.printf("OFFSET_US,%ld,resyncs,%lu\n", (long)(micros() - lastStampT),
+                  (unsigned long)fifoResyncs);
   } else if (c == 'a') {
     abortSequence("serial");
   } else if (c == 'd') {
     // Dump whatever the ring holds right now, no sequence involved.
-    if (seqState == SEQ_IDLE) dumpRecording(true, 0);
+    if (seqState == SEQ_IDLE && !dump.active) {
+      CaptureMeta m;
+      uint32_t from;
+      buildLiveMeta(true, &m, &from);
+      startDump(m, from);
+    }
   } else if (c == 'p') {
     if (!imuReady) {
       Serial.println("IMU not ready");
@@ -1818,53 +2018,6 @@ static void handleSerial() {
       Serial.println((uint32_t)v);
     } else {
       Serial.println("TIME,rejected");
-    }
-  } else if (c == 'E') {
-    // Diagnostic: erase every EMPTY slot sector by sector and report how long
-    // each erase took. Never touches a stored run.
-    if (seqState != SEQ_IDLE || !storageReady) return;
-    FLASH_WAIT_LIMIT_MS = 10000;
-    uint32_t worst = 0, total = 0, n = 0, slow = 0;
-    for (uint32_t sl = 0; sl < SLOT_COUNT; sl++) {
-      if (slotId[sl]) continue;
-      for (uint32_t a = sl * SLOT_BYTES; a < (sl + 1) * SLOT_BYTES; a += SECTOR_BYTES) {
-        flashMaxWaitMs = 0;
-        uint32_t t0 = millis();
-        bool ok = flashErase(a, SECTOR_BYTES);
-        uint32_t ms = millis() - t0;
-        if (!ok) { Serial.print("ERASETEST,fail,0x"); Serial.println(a, HEX); }
-        if (ms > worst) worst = ms;
-        if (ms > 100) { slow++; Serial.print("ERASETEST,slow,0x"); Serial.print(a, HEX); Serial.print(','); Serial.println(ms); }
-        total += ms; n++;
-      }
-    }
-    FLASH_WAIT_LIMIT_MS = 1000;
-    Serial.print("ERASETEST,sectors,"); Serial.print(n);
-    Serial.print(",mean_ms,"); Serial.print(n ? total / n : 0);
-    Serial.print(",worst_ms,"); Serial.print(worst);
-    Serial.print(",over100ms,"); Serial.println(slow);
-  } else if (c == 'L' || c == 'F' || c == 'X') {
-    // Flash access blocks; never in the middle of a start.
-    if (seqState != SEQ_IDLE) return;
-    uint8_t order[SLOT_COUNT];
-    uint32_t n = storageSlotsByAge(order);
-    if (c == 'L') {
-      Serial.print("FILES,"); Serial.print(n); Serial.print(',');
-      Serial.println(SLOT_COUNT - n);   // free slots
-      for (uint32_t i = 0; i < n; i++) {
-        Serial.print("FILE,"); Serial.print(slotId[order[i]]); Serial.print(',');
-        Serial.println(slotN[order[i]]);
-      }
-      Serial.println("FILES_END");
-    } else if (c == 'F') {
-      for (uint32_t i = 0; i < n; i++) {
-        if (!emitStoredRun(order[i])) { Serial.print("FETCH_FAIL,"); Serial.println(slotId[order[i]]); }
-      }
-      Serial.println("FETCH_END");
-    } else {
-      Serial.print("ERASED,");
-      Serial.println(storageEraseAll());
-      if (!showingResult) showReady();   // refresh the "runs on board" line
     }
   }
 }
@@ -1897,8 +2050,10 @@ void loop() {
                     seqState == SEQ_WAIT_SET);
   // Right after a sample, never between two: that is the whole point. BLE
   // gets the slot only while the display has nothing to draw, as on the XIAO.
+  serviceLinkLine();
   if (sampled || !imuReady) {
-    if (drawCount == 0) blePump();
+    if (drawCount == 0 && !blePump()) serviceTransfer();
+    serviceDump();
     displayPump(DRAW_BUDGET_US);
   }
 }

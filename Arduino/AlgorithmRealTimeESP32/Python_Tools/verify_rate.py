@@ -134,7 +134,7 @@ def main():
             # dump carries no start sequence, so the markers are all 0 here.
             print(f"[board] {line}")
             continue
-        if line.startswith(("GAPS,", "MAXGAP,", "STORED,", "ARM,", "ARMMG,", "ARMCAP,",
+        if line.startswith(("GAPS,", "MAXGAP,", "STORED,", "RUN,", "CHECK,", "ARM,", "ARMMG,", "ARMCAP,",
                             "VERDICT,", "RTMS,", "ONSET,")):
             # Left over from the last start (GAPS counts from the button, the
             # rest is that run's verdict). Not about this ring's rate: the

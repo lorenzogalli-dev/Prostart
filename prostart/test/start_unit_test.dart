@@ -1,12 +1,54 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:prostart/start_unit/run_recording.dart';
 import 'package:prostart/start_unit/clock_sync.dart';
 import 'package:prostart/start_unit/protocol.dart';
 
 List<int> u32(int v) => [v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF, (v >> 24) & 0xFF];
 
 void main() {
+  group('run recording', () {
+    test('decodes RUN_INFO', () {
+      final i = RunInfo.decode(_info())!;
+      expect(i.runId, 7);
+      expect(i.n, 30);
+      expect(i.armPeakMg, 12.34);
+      expect(i.timingOk, isTrue);
+      expect(i.armCapped, isFalse);
+      expect(i.verdict, Verdict.valid);
+      expect(i.reactionUs, 155500);
+      expect(i.key, '${0xA1B2C3D4}-7');
+    });
+
+    test('finds the hole, fills it, writes capture.py CSV', () {
+      final a = RunAssembler()..onPacket(_info());
+      a.onPacket(_samples(7, 0, 12));
+      a.onPacket(_samples(7, 20, 10));
+      a.onPacket([DataKind.end, 7, 0, 30, 0]);
+      expect(a.ended, isTrue);
+      expect(a.complete, isFalse);
+      expect(a.firstMissing(), (12, 20));
+      a.onPacket(_samples(7, 12, 8));
+      expect(a.complete, isTrue);
+      expect(a.firstMissing(), isNull);
+      final r = a.build(DateTime(2026, 10, 16, 14, 2, 12));
+      expect(r.fileName, '20261016_140212_r00007_0.155s.csv');
+      final csv = r.toCsv().split('\n');
+      expect(csv, contains('# set_t_s: 0.010000'));
+      expect(csv, contains('# board_verdict: valid start'));
+      expect(csv, contains('# board_reaction_ms: 155.5'));
+      expect(csv, contains('t_s,t_us,x_g,y_g,z_g'));
+      expect(csv, contains('0.000000,1990000,-0.1465,0.0488,1.0000'));
+    });
+
+    test('samples of another run are ignored', () {
+      final a = RunAssembler()..onPacket(_info());
+      a.onPacket(_samples(8, 0, 30));
+      expect(a.complete, isFalse);
+    });
+  });
+
   group('protocol (bytes as Ble.h sends them)', () {
     test('GO carries the beep instant', () {
       final e = StartEvent.decode([4, 9, ...u32(0xFFFFFF00)]);
@@ -87,3 +129,39 @@ void main() {
     });
   });
 }
+
+// v6: a run's recording over the data characteristic (Ble.h).
+List<int> _info({int n = 30, int id = 7}) {
+  final b = ByteData(51);
+  b.setUint8(0, DataKind.info);
+  b.setUint32(1, 0xA1B2C3D4, Endian.little);
+  b.setUint16(5, id, Endian.little);
+  b.setUint16(7, n, Endian.little);
+  b.setUint16(9, 10, Endian.little); // preroll
+  b.setUint32(11, 1000, Endian.little); // on
+  b.setUint32(15, 2000000, Endian.little); // set
+  b.setUint32(19, 3000000, Endian.little); // go
+  b.setUint32(23, 2500000, Endian.little); // arm
+  b.setUint16(27, 1234, Endian.little); // 12.34 mg
+  b.setUint8(29, 1 | 8);
+  b.setUint8(30, 0); // valid
+  b.setInt32(31, 155500, Endian.little);
+  b.setUint32(35, 3155500, Endian.little);
+  b.setUint16(49, 800, Endian.little);
+  return b.buffer.asUint8List();
+}
+
+List<int> _samples(int id, int first, int k) {
+  final b = ByteData(5 + 10 * k);
+  b.setUint8(0, DataKind.samples);
+  b.setUint16(1, id, Endian.little);
+  b.setUint16(3, first, Endian.little);
+  for (var i = 0; i < k; i++) {
+    b.setUint32(5 + 10 * i, 1990000 + 1245 * (first + i), Endian.little);
+    b.setInt16(5 + 10 * i + 4, -300, Endian.little);
+    b.setInt16(5 + 10 * i + 6, 100, Endian.little);
+    b.setInt16(5 + 10 * i + 8, 2048, Endian.little); // 1 g
+  }
+  return b.buffer.asUint8List();
+}
+

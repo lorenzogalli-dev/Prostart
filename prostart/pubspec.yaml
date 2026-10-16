@@ -38,6 +38,7 @@ dependencies:
   # requires a paid commercial tier and pings its server at build time.
   flutter_blue_plus: 1.36.8
   ffi: ^2.2.0
+  path_provider: ^2.1.5
   photofinish_camera:
     path: packages/photofinish_camera
 

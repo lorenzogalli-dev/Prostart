@@ -84,7 +84,8 @@ HEADER_KEYS = {
     # board's flash.
     "GAPS": "gaps",
     "MAXGAP": "max_gap_us",
-    "STORED": "board_run_id",
+    "STORED": "board_run_id",   # v5 flash id; v6 sends RUN instead
+    "RUN": "board_run_id",
     "WALLCLOCK": "board_wallclock_unix",
     # ESP32 port: the rate this capture was configured for.
     "ODR": "odr_hz",

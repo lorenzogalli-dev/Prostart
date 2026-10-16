@@ -10,6 +10,8 @@ abstract class StartUnitUuids {
   static const event = 'f7280001-22eb-44d8-be12-ecd2b6bdd709';
   static const ping = 'f7280002-22eb-44d8-be12-ecd2b6bdd709';
   static const pong = 'f7280003-22eb-44d8-be12-ecd2b6bdd709';
+  static const data = 'f7280004-22eb-44d8-be12-ecd2b6bdd709';
+  static const ctrl = 'f7280005-22eb-44d8-be12-ecd2b6bdd709';
   static const advertisedName = 'ProStart';
 }
 
@@ -130,3 +132,96 @@ class Pong {
 }
 
 List<int> encodePing(int seq) => [seq & 0xFF, (seq >> 8) & 0xFF];
+
+/// Kinds of packet on the data characteristic.
+abstract class DataKind {
+  static const info = 1;
+  static const samples = 2;
+  static const end = 3;
+  static const noRun = 4;
+}
+
+/// RUN_INFO: everything about one start except its samples.
+class RunInfo {
+  /// Random per board power-up; with [runId] it names a run uniquely.
+  final int bootId;
+  final int runId;
+  final int n;
+  final int preroll;
+  final int onUs, setUs, goUs, armUs;
+  final double armPeakMg;
+  final bool armValid, armCapped, truncated, timingOk;
+  final Verdict verdict;
+  final int reactionUs;
+  final int onsetUs;
+  final int dropped, gaps, maxGapUs, clockStepUs, odrHz;
+
+  const RunInfo({
+    required this.bootId,
+    required this.runId,
+    required this.n,
+    required this.preroll,
+    required this.onUs,
+    required this.setUs,
+    required this.goUs,
+    required this.armUs,
+    required this.armPeakMg,
+    required this.armValid,
+    required this.armCapped,
+    required this.truncated,
+    required this.timingOk,
+    required this.verdict,
+    required this.reactionUs,
+    required this.onsetUs,
+    required this.dropped,
+    required this.gaps,
+    required this.maxGapUs,
+    required this.clockStepUs,
+    required this.odrHz,
+  });
+
+  String get key => '$bootId-$runId';
+
+  static RunInfo? decode(List<int> bytes) {
+    if (bytes.length < 51 || bytes[0] != DataKind.info) return null;
+    final b = ByteData.sublistView(Uint8List.fromList(bytes));
+    u16(int at) => b.getUint16(at, Endian.little);
+    u32(int at) => b.getUint32(at, Endian.little);
+    final flags = bytes[29];
+    final v = bytes[30];
+    return RunInfo(
+      bootId: u32(1),
+      runId: u16(5),
+      n: u16(7),
+      preroll: u16(9),
+      onUs: u32(11),
+      setUs: u32(15),
+      goUs: u32(19),
+      armUs: u32(23),
+      armPeakMg: u16(27) / 100.0,
+      armValid: flags & 1 != 0,
+      armCapped: flags & 2 != 0,
+      truncated: flags & 4 != 0,
+      timingOk: flags & 8 != 0,
+      verdict: v < Verdict.values.length ? Verdict.values[v] : Verdict.unusable,
+      reactionUs: b.getInt32(31, Endian.little),
+      onsetUs: u32(35),
+      dropped: u16(39),
+      gaps: u16(41),
+      maxGapUs: u32(43),
+      clockStepUs: u16(47),
+      odrHz: u16(49),
+    );
+  }
+}
+
+/// ctrl GET: samples [from, to) of run [runId] (0 = whichever the board holds).
+List<int> encodeGet(int runId, int from, int to) => [
+  1,
+  runId & 0xFF, (runId >> 8) & 0xFF,
+  from & 0xFF, (from >> 8) & 0xFF,
+  to & 0xFF, (to >> 8) & 0xFF,
+];
+
+/// ctrl ACK: the run is saved here, the board may let it go.
+List<int> encodeAck(int runId) => [2, runId & 0xFF, (runId >> 8) & 0xFF];

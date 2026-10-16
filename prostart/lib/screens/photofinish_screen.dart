@@ -110,14 +110,16 @@ class _PhotofinishScreenState extends State<PhotofinishScreen> {
       final c = await _camera.arm(goPhoneUs);
       final total = (c.crossPhoneUs - goPhoneUs) / 1e6;
       final result = unit.lastResult;
+      final sameStart = result != null && result.goBoardUs == go.boardUs;
+      final falseStart = sameStart && result.verdict == Verdict.falseStart;
       final run = PhotofinishRun(
         when: DateTime.now(),
         totalSeconds: total,
-        reactionSeconds: result != null &&
-                result.goBoardUs == go.boardUs &&
-                result.verdict == Verdict.valid
+        reactionSeconds: sameStart &&
+                (result.verdict == Verdict.valid || falseStart)
             ? result.reactionSeconds
             : null,
+        falseStart: falseStart,
         distanceM: AppState.instance.distanceM,
         image: c.jpeg,
         syncFloorUs: syncFloor,

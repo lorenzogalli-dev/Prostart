@@ -5,6 +5,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import 'phone_clock.dart';
 import 'protocol.dart';
+import 'run_recording.dart';
 import 'start_unit.dart';
 
 /// The real start unit over BLE (protocol in protocol.dart / Ble.h).
@@ -14,6 +15,10 @@ class BleStartUnit extends StartUnit {
 
   BluetoothDevice? _device;
   BluetoothCharacteristic? _ping;
+  BluetoothCharacteristic? _ctrl;
+  final _run = RunAssembler();
+  final _delivered = <String>{}; // runs already handed on this session
+  int _refetches = 0;
   final _subs = <StreamSubscription<dynamic>>[];
   Timer? _pingTimer;
   int _seq = 0;
@@ -68,6 +73,8 @@ class BleStartUnit extends StartUnit {
         await device.requestConnectionPriority(
           connectionPriorityRequest: ConnectionPriority.high,
         );
+        // The recording needs packets of 51+ bytes; iOS negotiates by itself.
+        await device.requestMtu(247);
       }
       final services = await device.discoverServices();
       final svc = services.firstWhere(
@@ -87,12 +94,26 @@ class BleStartUnit extends StartUnit {
       }));
       await pong.setNotifyValue(true);
       await event.setNotifyValue(true);
+      // v6 boards send each run's recording; older ones have no such chars.
+      final data = svc.characteristics
+          .where((c) => c.uuid == Guid(StartUnitUuids.data))
+          .firstOrNull;
+      final ctrl = svc.characteristics
+          .where((c) => c.uuid == Guid(StartUnitUuids.ctrl))
+          .firstOrNull;
+      if (data != null && ctrl != null) {
+        _ctrl = ctrl;
+        _subs.add(data.onValueReceived.listen(_onData));
+        await data.setNotifyValue(true);
+      }
       // Where the board is right now, without waiting for its next event.
       final now = StartEvent.decode(await event.read());
       if (now != null) emit(now);
 
       setLink(LinkState.connected);
       _pingTimer = Timer.periodic(_pingEvery, (_) => _sendPing());
+      // A run the board still holds (we were away when it ended): fetch it.
+      await _ctrlWrite(encodeGet(0, 0, 0xFFFF));
     } catch (e) {
       error = e is String ? e : 'Connection failed - move closer and retry';
       await _teardown();
@@ -158,6 +179,48 @@ class BleStartUnit extends StartUnit {
     notifyListeners();
   }
 
+  Future<void> _ctrlWrite(List<int> v) async {
+    try {
+      await _ctrl?.write(v, withoutResponse: false);
+    } catch (_) {}
+  }
+
+  void _onData(List<int> v) {
+    final kind = _run.onPacket(v);
+    final info = _run.info;
+    if (kind == DataKind.info && info != null && !_delivered.contains(info.key)) {
+      _refetches = 0;
+      setRecording(RecordingState.receiving);
+    } else if (kind == DataKind.noRun &&
+        recordingState == RecordingState.receiving) {
+      setRecording(RecordingState.failed);
+    } else if (kind == DataKind.end && info != null) {
+      _checkRun();
+    }
+  }
+
+  void _checkRun() {
+    final info = _run.info!;
+    if (_delivered.contains(info.key)) {
+      _ctrlWrite(encodeAck(info.runId)); // a repeat: it is saved already
+      return;
+    }
+    if (_run.complete) {
+      _delivered.add(info.key);
+      emitRecording(_run.build(DateTime.now()));
+      return;
+    }
+    final hole = _run.firstMissing();
+    if (hole == null || ++_refetches > 20) {
+      setRecording(RecordingState.failed);
+      return;
+    }
+    _ctrlWrite(encodeGet(info.runId, hole.$1, hole.$2));
+  }
+
+  @override
+  Future<void> ackRecording(RunRecording r) => _ctrlWrite(encodeAck(r.info.runId));
+
   void _onDisconnected() {
     if (link == LinkState.disconnected) return;
     error = 'ProStart disconnected';
@@ -169,7 +232,11 @@ class BleStartUnit extends StartUnit {
     _pingTimer?.cancel();
     _pingTimer = null;
     _ping = null;
+    _ctrl = null;
     _sent.clear();
+    if (recordingState == RecordingState.receiving) {
+      recordingState = RecordingState.failed; // fetched again on reconnect
+    }
     for (final s in _subs) {
       await s.cancel();
     }

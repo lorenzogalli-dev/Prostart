@@ -3,6 +3,88 @@
 Last updated: 2026-10-16. Written for an agent starting with no prior context.
 Sections are newest first.
 
+## READ THIS FIRST — 2026-10-16 (evening): gym false starts were a FIFO bug; v6 stores nothing on the board, runs go to the app
+
+**The gym session** (`Arduino/AlgorithmRealTimeESP32/Data/gym_161026/`, runs
+r00030-r00048, board standalone; r00035 is a bench LED test): 10 of 18 starts
+were false starts, many of them good starts on the user's 240 fps video.
+**Not the IMU's sensitivity**: resting noise 3.5 vs ~2.7 mg (XIAO), 4-8 mg in
+"set" for both, arming at 12-15 mg like the XIAO, board == offline detector.
+
+**Cause, measured:** the BMI270 FIFO saturates at **337 frames (0.42 s)**, not
+the 1024 / 1.28 s the code assumed. After every start the loop stalled ~0.6-1
+s (flash write ~0.6 s + the serial dump giving up). The FIFO overwrote its
+oldest frames while the ISR's stamp queue (1024) kept their stamps, so every
+later sample was paired with an older stamp: whole recordings shifted 0.4-1.05 s
+EARLY against the beeps, accumulating start after start until the stamp queue
+overflowed and resynced. Signature: the file ends before go + 1000 ms and set_t_s
+is 2.988 + shift. All 10 FS had it, all valid ones had 0. With the PC reading
+(capture.py) the dump took 2.2 s, the queue overflowed and resynced every time,
+which is why bench data never showed it. Stall test (`S<ms>` then `O`): 500 ms
+-> 81 ms off, 800 -> 647 ms off; after the fix < 1.2 ms for 450-1300 ms.
+
+**Recovered:** `Data/gym_161026/corrected/` (originals untouched), by
+`Python_Tools/correct_fifo_shift.py` (shift from "set" and from the end, which
+agree within 0.6 ms; r00033 resynced mid-file and is left as is). All 10 FS
+become valid starts: 155.5, 515.7, 149.4, 162.4, 493.4, 169.8, 264.2, 146.1,
+288.9, 317.7 ms (r31, r32, r34, r37, r38, r40, r41, r43, r45, r48).
+
+**Also found:** with the board on a computer's USB and no terminal open, every
+Serial write blocked 100 ms (HWCDC: 20 x the 5 ms timeout): beeps ~200 ms
+long, the result shown seconds after "go". Measurement unaffected (ISR stamps),
+behaviour not acceptable.
+
+### Firmware v6 (user's decision: no storage on the board)
+- **Flash storage removed** (`Storage.h`, `partitions.csv`, `pull_captures.py`,
+  commands L/F/X/E). The run is held in the RAM ring after the result (new
+  samples are read and paired but not written) until the app ACKs it or the
+  next start's "set".
+- **BLE `data` (F7280004, notify) + `ctrl` (F7280005, write)**, documented in
+  Ble.h: RUN_INFO (51 B), SAMPLES (k x 10 B, k = (MTU-8)/10, 24 on iOS), RUN_END,
+  NO_RUN; GET(id, from, to) / ACK(id). Pushed by the board after the result,
+  one packet per loop slot, 4 ms apart, 20 ms back-off when the stack is full
+  (notify status callback), stops at "set". MTU 247 preferred.
+- **Serial never blocks**: TX timeout 0; the dump starts only with a host
+  draining the buffer (>= 2 KB free) and goes 8 rows per pass, ring held.
+- **FIFO overwrite detected**: stamps waiting > frames + 8 -> resync
+  (`pullFifo`); `BMI_FIFO_MAX_FRAMES` = 337, measured.
+- **checkTiming before every verdict**: newest sample within 10 ms of "set" and
+  of the end, no resync after "set", no step > 3 periods in the window; else
+  UNUSABLE with the reason on screen ("timing: ..."). Tested with a temporary
+  build: a 300 ms stall after "set" passes, 600 ms -> UNUSABLE "sampling
+  restarted" (not a false start).
+- Screen: READY says "app connected" / "no app: runs not saved"; the result
+  footer "sending to app..." -> "saved in app".
+- Untouched: StartDetector.h, AicPicker.h, beeps, the GO event (t0), sync.
+- Verified from the Mac (`ble_monitor.py --outdir --start-serial --runs`, which
+  now downloads runs like the app): serial closed, RESULT 961 ms after GO
+  arrived, 5094 samples in 1.2 s, file ends at go + 999.4 ms. `verify_rate.py`
+  803.2 Hz, std 1.2 us (DROPPED after a reboot still counts, ring clean).
+
+### App
+- `start_unit/run_recording.dart` (assembler with hole re-GET, CSV identical
+  to capture.py's + boot id, timing_check, local time), `run_store.dart`
+  (Documents/runs, dedup by boot-run key; Info.plist file sharing: Files app >
+  On My iPhone > ProStart). The ACK goes only after the file is written.
+  Reaction shows "Recording saved". Photofinish: a false start is shown in red
+  with its signed time, the total time as before. `flutter test` 10/10.
+  Installed on the iPhone 13 over Wi-Fi.
+
+### Open
+1. **User testing now**: Reaction with the phone (recording saved, board
+   footer), one start with the app closed then reconnect (fetch of the held
+   run), a Photofinish false start. Then pull the CSVs from the phone
+   (`xcrun devicectl device copy from --domain-type appDataContainer
+   --domain-identifier com.prostart.prostart --source Documents/runs ...`)
+   and check them.
+2. **Soak test** (proposed, not run): 30 standalone starts with BLE download,
+   pass = every one timing ok, 0 gaps/resyncs/dropped.
+3. Optional robustness: drain the FIFO from a higher-priority task, so loop
+   stalls cannot reach the FIFO at all (touches the sampling path: only after
+   2, and with every test of today redone).
+4. A few DROPPED right after each reboot, never inside a start: not explained.
+5. Sync test with the LED (firmware ready, app mode not written).
+
 ## READ THIS FIRST — 2026-10-16: the ESP32 start unit passes every BLE test; the app runs Reaction on the real board
 
 Flashed `AlgorithmRealTimeESP32` on the user's board (this Mac needed Rosetta
