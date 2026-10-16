@@ -54,7 +54,9 @@ port only does what the XIAO did. ESP-NOW is the next step, after the tests belo
 | Button | one side / other | **GPIO9** / GND | INPUT_PULLUP, same pin as BOOT |
 | Piezo | (+) / (−) | **GPIO1** / **GPIO2** | antiphase, no GND |
 
-Free: GPIO21. All pins are in `Pins.h`.
+| Sync-test LED (green) | anode via 100-220 Ω / cathode | **GPIO21** / GND | lit with the "go" beep only, for a camera; flickers with the boot log at reset |
+
+Free: none. All pins are in `Pins.h`.
 
 Why this map (the user's layout, 2026-10-07; an earlier one had the button on
 1, INT1 on 2, the piezo on 8/9 and the display on 4/5/6/7/10/20):

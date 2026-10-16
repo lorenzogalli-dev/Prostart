@@ -118,9 +118,10 @@ static bool bmiFail(const char* why, uint8_t value) {
 // A reset of the C3 in the middle of a read can leave the BMI270 holding SDA
 // low, and then nothing on the bus answers until power is cycled. Nine clocks
 // let it finish the byte it was sending and release the line.
-// NOT called at the moment: the colleague's board only came up on 07/10 with
-// it left out (together with the two longer delays in bmiBegin), and which of
-// the three it was is not known yet. Keep it out until that is measured.
+// Not run before the first init: the colleague's board only came up on 07/10
+// with it left out (together with the two longer delays in bmiBegin), and
+// which of the three it was is not known yet. setup() runs it only after a
+// failed init, before the one retry (16/10: an upload left the IMU dead).
 static void i2cBusRecover() {
   pinMode(IMU_SDA_PIN, INPUT_PULLUP);
   pinMode(IMU_SCL_PIN, INPUT_PULLUP);

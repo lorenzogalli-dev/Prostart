@@ -1,7 +1,67 @@
 # HANDOFF — Prostart live IMU data view & sensor evaluation
 
-Last updated: 2026-10-15. Written for an agent starting with no prior context.
+Last updated: 2026-10-16. Written for an agent starting with no prior context.
 Sections are newest first.
+
+## READ THIS FIRST — 2026-10-16: the ESP32 start unit passes every BLE test; the app runs Reaction on the real board
+
+Flashed `AlgorithmRealTimeESP32` on the user's board (this Mac needed Rosetta
+for Arduino's x86 `ctags`: `softwareupdate --install-rosetta`). Boot: BMI270
+OK, 800 Hz, BLE advertising as ProStart.
+
+**The XIAO battery, all passed** (`Data/bench_161026/`, 4 starts):
+- `verify_rate.py` without BLE: 803.2 Hz, 12000/12000, DROPPED 0, no gaps,
+  dt std **0.9 µs**; with `ble_monitor.py` connected: same, std **2.8 µs**.
+- 3 starts in a row with the monitor connected, ~10 s apart: every event
+  through RESULT, GAPS 0, DROPPED 0; board == offline detector to 0.1 ms
+  (207.4, 129.6, −899.0 FS). Disconnect → advertises again. One start with
+  nothing connected: valid, GAPS 0, but board 133.4 vs offline 132.2 ms - one
+  sample, in the AIC shift (−10.0 vs −11.2): the known board/Python AIC-input
+  divergence (09-22), not BLE.
+- `verify_rate.py` hung for good: its "drain until silent" never ends with the
+  ESP32's continuous idle preview. Now bounded to 1 s.
+
+**App (iPhone 13) on the real board**: Reaction mirrors the board end to end.
+Installed over Wi-Fi with `flutter build ios --release` + `xcrun devicectl
+device install app --device <udid> build/ios/iphoneos/Runner.app` (retry if
+the first one says "Connection reset by peer": phone locked).
+- Result at go + ~1.02 s on screen and on the phone: the 1 s tail by design.
+- "Longer beeps" reported once: measured afterwards with a diagnostic build,
+  beeps end 0.01-0.5 ms after 100 ms, with the phone connected or not. The
+  one report came with the board on USB and no reader on the port; not
+  reproduced, not chased (on battery that case does not exist).
+- **Mask overlay fixed**: the live camera never passed the mask to the overlay;
+  video analysis re-detected it on one frame in image mode (often no one) -
+  now keeps the analysis pass's own masks for ±16 frames around the crossing.
+  Timing untouched.
+
+**Firmware changes, committed:**
+- **IMU init failure** (seen today: an upload reset left the BMI270 dead,
+  `IMU not ready`, every start UNUSABLE with `PREROLL,0`): the plain init runs
+  as before; only if it fails, I2C bus recovery + one retry, then up to 3
+  `esp_restart()`s (count in RTC memory, cleared on power-up), then "IMU error
+  / unplug and replug power" on screen and starts refused.
+- **Sync-test LED on GPIO21** (green, anode via 100-220 Ω, cathode GND), lit
+  by one register write inside `beep()` at "go" only, off with the buzzer.
+  Rate unchanged after it (802.6 Hz, std 1.0 µs, GAPS 0).
+- Tried and reverted: requesting a 15 ms BLE interval on connect. The app's
+  sync chip stayed at ±18-19 ms.
+
+**Known, not fixed**: a few DROPPED (1-31) right after each reboot, never
+inside a start (the counter resets at the button; every start today had 0).
+
+### Clock sync, as it stands
+Ping every 100 ms from connect to "set", min of each one-way difference over
+10 s; the chip next to ProStart is half the round-trip floor: **±19 ms**, a
+worst-case bound, not a measurement. Reaction does not use it. Photofinish
+does: `total = crossing (phone clock) − go (board stamp + offset)`.
+
+### Next
+1. Photofinish with the real board, in the gym (today).
+2. Sync test: the app finds the LED's first lit frame at 240 fps vs the go
+   mapped through the sync; ~20 repeats → mean and spread. Firmware ready,
+   app mode not written.
+3. Tell the colleagues about the `video.py` fps bug.
 
 ## READ THIS FIRST — 2026-10-15 (late night): CPU masks work; real frame timestamps everywhere; app icon
 

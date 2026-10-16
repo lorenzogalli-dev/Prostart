@@ -344,7 +344,8 @@ final class CrossingFinder {
     let ta = (frames[a.0].1 - t0) / 1000, tb = (frames[b.0].1 - t0) / 1000
     let shownIdx = abs(ta - c.t) <= abs(tb - c.t) ? a.0 : b.0
     let jpeg = render(
-      frames[shownIdx].0, detection: detections[shownIdx] ?? nil, line: line, dir: dir)
+      frames[shownIdx].0, detection: detections[shownIdx] ?? nil, line: line, dir: dir,
+      mask: (poses[shownIdx] ?? nil)?.mask)
     let span = frames.last!.1 - frames.first!.1
     let measured = span > 0 ? Double(frames.count - 1) / (span / 1e6) : 0
     return .success(
@@ -365,11 +366,12 @@ final class CrossingFinder {
   }
 
   private func render(
-    _ frame: UnsafeMutableRawPointer, detection: Detection?, line: (Double, Double), dir: Double
+    _ frame: UnsafeMutableRawPointer, detection: Detection?, line: (Double, Double), dir: Double,
+    mask: [Float]?
   ) -> Data {
     drawOverlay(
       frame, w: FrameRing.width, h: FrameRing.height, rowBytes: FrameRing.rowBytes,
-      detection: detection, line: line, dir: dir)
+      detection: detection, line: line, dir: dir, mask: mask)
   }
 }
 

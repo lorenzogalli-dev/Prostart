@@ -42,4 +42,9 @@ static const int TFT_DC_PIN   = 6;   // display pin "RS"
 static const int TFT_RST_PIN  = 5;
 static const int TFT_BL_PIN   = 4;   // display pin "LEDA", through its Q1
 
-// Free: GPIO21 (UART0 TX, toggles with the boot log at every reset).
+// Sync-test LED (green, anode via 100-220 Ohm, cathode to GND): lit with the
+// "go" beep, so a camera can see the go instant. GPIO21 is UART0 TX: it
+// flickers with the ROM boot log at every reset, then the sketch drives it LOW.
+static const int SYNC_LED_PIN = 21;
+
+// Free: none.

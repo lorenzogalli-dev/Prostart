@@ -380,6 +380,10 @@ static float lastReactionMs = 0.0f;
 static uint32_t lastOnsetUs = 0;
 
 static bool imuReady = false;
+// Restarts tried after a failed IMU init. RTC memory: kept across
+// esp_restart(), cleared on a power-up (checked in setup()).
+static const uint32_t IMU_MAX_RESTARTS = 3;
+RTC_NOINIT_ATTR static uint32_t imuRestarts;
 static uint32_t idleSampleIndex = 0;
 
 // Every data-ready edge, stamped by the ISR into a queue: one stamp per
@@ -552,6 +556,7 @@ void setup() {
   pinMode(TFT_BL_PIN, OUTPUT);
   digitalWrite(TFT_BL_PIN, LOW);
   buzzerInit();
+  syncLedInit();
   tftBegin();
 
   // USB Serial/JTAG (HWCDC): the baud rate is ignored, USB sets the speed.
@@ -575,14 +580,37 @@ void setup() {
     while (!Serial && millis() - waitStart < 3000) delay(10);
   }
 
+  // A cold power-up clears the restart count; esp_restart() keeps it.
+  if (esp_reset_reason() == ESP_RST_POWERON || imuRestarts > IMU_MAX_RESTARTS) imuRestarts = 0;
   imuReady = bmiBegin();
+  if (!imuReady) {
+    // Only when the plain init (the one that works on the PCB) has failed:
+    // a reset mid-read (upload, crash) can leave the BMI270 holding SDA low.
+    Serial.print("IMU error - BMI270: "); Serial.print(bmiError);
+    Serial.println(" - retrying after I2C bus recovery");
+    Wire.end();
+    i2cBusRecover();
+    imuReady = bmiBegin();
+  }
   if (!imuReady) {
     Serial.print("IMU error - BMI270: ");
     Serial.print(bmiError);
     Serial.print(" (0x");
     Serial.print(bmiErrorValue, HEX);
     Serial.println(")");
+    if (imuRestarts < IMU_MAX_RESTARTS) {
+      imuRestarts++;
+      Serial.printf("IMU error: restarting (%lu/%lu)\n",
+                    (unsigned long)imuRestarts, (unsigned long)IMU_MAX_RESTARTS);
+      showImuError("restarting...");
+      displayPump(0xFFFFFFFFUL);
+      Serial.flush();
+      delay(1500);
+      esp_restart();
+    }
+    Serial.println("IMU error: giving up - unplug the power and plug it back");
   } else {
+    imuRestarts = 0;
     pinMode(IMU_INT1_PIN, INPUT);
     attachInterrupt(digitalPinToInterrupt(IMU_INT1_PIN), drdyIsr, RISING);
     if (!fifoResync()) Serial.println("WARNING: no data-ready edges on INT1 - timestamps are extrapolated");
@@ -1151,7 +1179,18 @@ static void buzzerDriveOn() {
   buzzerDriving = true;
 }
 
+// Sync-test LED: one register write each way, no driver call, so lighting it
+// at "go" costs the timing path nothing measurable (~50 ns).
+static void syncLedInit() {
+  gpio_reset_pin((gpio_num_t)SYNC_LED_PIN);
+  gpio_set_direction((gpio_num_t)SYNC_LED_PIN, GPIO_MODE_OUTPUT);
+  gpio_set_level((gpio_num_t)SYNC_LED_PIN, 0);
+}
+static inline void syncLedOn()  { REG_WRITE(GPIO_OUT_W1TS_REG, 1UL << SYNC_LED_PIN); }
+static inline void syncLedOff() { REG_WRITE(GPIO_OUT_W1TC_REG, 1UL << SYNC_LED_PIN); }
+
 static void buzzerDriveOff() {
+  syncLedOff();   // goes out with the beep it came on with, aborts included
   // Safe to call when already off (an abort between two beeps does).
   if (!buzzerDriving) return;
   buzzerRest();
@@ -1174,8 +1213,9 @@ static void buzzerDriveOff() {
 // but assumed is exactly the problem. Measure it once with a GPIO edge and a
 // microphone on one time base and subtract it. Re-measure if the buzzer,
 // BEEP_FREQ_HZ or the antiphase wiring changes - all three move it.
-static void beep(uint32_t* markerOut, bool* capturedOut) {
+static void beep(uint32_t* markerOut, bool* capturedOut, bool led = false) {
   buzzerDriveOn();
+  if (led) syncLedOn();   // with the drive, before the stamp: same instant
   uint32_t t = micros();
   buzzerOn = true;
   buzzerOffUs = t + BEEP_MS * 1000UL;
@@ -1332,6 +1372,12 @@ static void evaluateAndReportResults() {
 
 static void startSequence() {
   if (seqState != SEQ_IDLE) return;
+  // No sensor, no start: it could only end UNUSABLE.
+  if (!imuReady) {
+    Serial.println("SEQ,refused,imu");
+    showImuError("unplug and replug power");
+    return;
+  }
   uint32_t seed = micros();
   // Seeded from the instant a human pressed the button. An unseeded random()
   // replays the identical sequence after every reset, so by the third attempt
@@ -1430,7 +1476,7 @@ static void serviceSequence() {
       showSet();
       break;
     case SEQ_WAIT_GO:
-      beep(&goT, &goCaptured);
+      beep(&goT, &goCaptured, true);   // + the sync-test LED
       seqState = SEQ_TAIL;
       seqDeadlineUs = goT + TAIL_AFTER_GO_MS * 1000UL;
       Serial.println("SEQ,go");
@@ -1480,9 +1526,21 @@ static void serviceSequence() {
 // Screens. These only QUEUE drawing - loop() pumps it, see there.
 // ===========================================================================
 
+static void showImuError(const char* hint) {
+  screenBegin();
+  queueTextCentered(8, 3, C_ORANGE, "ProStart");
+  queueTextCentered(40, 3, C_RED, "IMU error");
+  queueTextCentered(74, 1, C_WHITE, "BMI270 not answering");
+  queueTextCentered(98, 1, C_GREY, hint);
+}
+
 static void showReady() {
   showingResult = false;
   bleEvent(BLE_EV_READY);
+  if (!imuReady) {
+    showImuError("unplug and replug power");
+    return;
+  }
   screenBegin();
   queueTextCentered(8, 3, C_ORANGE, "ProStart");
   queueTextCentered(40, 3, C_GREEN, "READY");

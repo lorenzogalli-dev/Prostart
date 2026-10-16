@@ -92,8 +92,11 @@ def main():
     # out mid-transfer leaves the board still transmitting, and reading its
     # DUMP_END as if it were ours reports "0 rows" on a perfectly healthy
     # board. Drain before asking.
+    # Bounded: the idle preview streams without pause, so "read until silent"
+    # never ends. Its rows before DUMP_START are dropped by the parser below.
     ser.reset_input_buffer()
-    while ser.readline():
+    t_end = time.time() + 1.0
+    while time.time() < t_end and ser.readline():
         pass
     ser.reset_input_buffer()
     ser.write(b"d")

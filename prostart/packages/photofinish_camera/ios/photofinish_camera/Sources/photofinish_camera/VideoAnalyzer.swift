@@ -207,6 +207,13 @@ final class VideoAnalyzer: NSObject, PHPickerViewControllerDelegate {
     var idx = 0, nDet = 0, lastTs = -1
     var frameTimes: [Int: Double] = [:]  // ms, for the shown frame
     var firstPts: Double?
+    // The analysis pass's own masks for the frames around each crossing, so
+    // the overlay shows the silhouette the timing used (a fresh image-mode
+    // detection on one frame often finds no one). Arrays are shared, not copied.
+    let maskKeep = 16
+    var recentMasks: [(Int, [Float])] = []
+    var masks: [Int: [Float]] = [:]
+    var keepMasksUntil = -1
 
     while let sb = output.copyNextSampleBuffer() {
       guard let pb = CMSampleBufferGetImageBuffer(sb) else { continue }
@@ -227,6 +234,9 @@ final class VideoAnalyzer: NSObject, PHPickerViewControllerDelegate {
         let res = try? landmarker.detect(videoFrame: image, timestampInMilliseconds: ts),
         let p = framePose(res, w: aw, h: ah)
       {
+        recentMasks.append((frameIdx, p.mask))
+        if recentMasks.count > maskKeep { recentMasks.removeFirst() }
+        if frameIdx <= keepMasksUntil { masks[frameIdx] = p.mask }
         var seen = false
         for k in 0..<2 {
           let dir = dirs[k]
@@ -237,6 +247,10 @@ final class VideoAnalyzer: NSObject, PHPickerViewControllerDelegate {
           let s = Sample(t: t, s: dir * (d.x - lineAt(line, d.y)))  // FinishJudge.push
           if crossings[k] == nil, let prev = samples[k].last {
             crossings[k] = crossingBetween(prev, s)
+            if crossings[k] != nil {
+              for (i, m) in recentMasks { masks[i] = m }
+              keepMasksUntil = frameIdx + maskKeep
+            }
           }
           samples[k].append(s)
         }
@@ -263,8 +277,8 @@ final class VideoAnalyzer: NSObject, PHPickerViewControllerDelegate {
     }
     let c = refine(c0, samples: samples[k])
 
-    // The frame nearest the crossing, read again, with the overlay. Its mask
-    // is detected again on that one frame (diagnostic only).
+    // The frame nearest the crossing, read again, with the overlay and the
+    // mask the analysis used on it (detected again only if it was not kept).
     let nearest = detections[k].keys.min {
       abs(frameTimes[$0]! - c.t) < abs(frameTimes[$1]! - c.t)
     }
@@ -284,12 +298,12 @@ final class VideoAnalyzer: NSObject, PHPickerViewControllerDelegate {
             | CGBitmapInfo.byteOrder32Little.rawValue)
       {
         ctx.draw(cg, in: CGRect(x: 0, y: 0, width: aw, height: ah))
-        var mask: [Float]?
+        var mask = masks[n]
         var buf: CVPixelBuffer?
         CVPixelBufferCreateWithBytes(
           nil, aw, ah, kCVPixelFormatType_32BGRA, upright, aw * 4, nil, nil, nil, &buf)
-        if let b = buf, let lm = try? makeLandmarker(.image), let image = try? MPImage(pixelBuffer: b),
-          let res = try? lm.detect(image: image)
+        if mask == nil, let b = buf, let lm = try? makeLandmarker(.image),
+          let image = try? MPImage(pixelBuffer: b), let res = try? lm.detect(image: image)
         {
           mask = framePose(res, w: aw, h: ah)?.mask
         }
