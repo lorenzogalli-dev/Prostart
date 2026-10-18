@@ -1,0 +1,4 @@
+# KiCad local state: backups (a nested git repo), lock files, caches
+.history/
+*.lck
+fp-info-cache

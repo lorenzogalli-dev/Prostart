@@ -2,7 +2,7 @@
 
 Files are renamed from the logger's `HHMMSS_<role>.csv` to say which test they
 are. `_A` = start board (Mac), `_B` = finish board (Windows). Any pair runs
-through `../../analyse.py <A> <B>`. The numbers are in `HANDOFF.md`, 09-29
+through `../../analyse.py <A> <B>`. The numbers are in `Docs/HANDOFF.md`, 09-29
 sections.
 
 | file | logger name | what |

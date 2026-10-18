@@ -59,4 +59,4 @@ log lives on the phone, so the phone is the thing that has to come back.
 `measurements/20260922/` — first field session. `01_rssi-broken.csv` is kept
 only as a record: RSSI never reached the page in that run, the firmware read it
 and printed it to serial but never sent it. `03_full-run-70m.csv` is the usable
-one. Results are in `HANDOFF.md`.
+one. Results are in `Docs/HANDOFF.md`.

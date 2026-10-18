@@ -7,7 +7,7 @@ import UIKit
 import UniformTypeIdentifiers
 
 /// "Analyse a video": a recorded race through the same detection as the live
-/// photofinish, run the way Photofinish_Python/finisheye_detection/video.py
+/// photofinish, run the way AI_Torso_Detector/finisheye_detection/video.py
 /// runs it, so the two can be compared on the same file:
 ///   - every frame, in order, MediaPipe in VIDEO mode (tracking);
 ///   - frames upright (the file's rotation applied), resized to 640 px wide;

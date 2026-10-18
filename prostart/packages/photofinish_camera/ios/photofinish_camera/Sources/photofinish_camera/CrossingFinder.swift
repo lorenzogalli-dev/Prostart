@@ -5,7 +5,7 @@ import UIKit
 struct CrossingError: Error { let message: String }
 
 // A Swift port of the colleagues' reference implementation,
-// Photofinish_Python/finisheye_detection (detector.py "segmentation" method and
+// AI_Torso_Detector/finisheye_detection (detector.py "segmentation" method and
 // judge.py). It is meant to give the same answer as the Python on the same
 // frames: change the Python first, then this, and keep the names aligned.
 //

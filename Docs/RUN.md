@@ -1,7 +1,7 @@
 # RUN.md — what each file is and how to run it
 
 Exact versions and setup: [BUILD.md](./BUILD.md). Why the algorithm works the
-way it does: [INFO.md](./INFO.md).
+way it does: [ALGORITHM.md](./ALGORITHM.md).
 
 Everything lives in `Arduino/AlgorithmRealTime/`. The firmware **decides in
 real time**; the Python **tunes and explains**. They are two implementations of

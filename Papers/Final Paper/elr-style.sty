@@ -1,0 +1,339 @@
+%% =====================================================================
+%% Explorations in Linguistic Review (ELR)
+%% Author Style -- Linguistic Horizon Edition v1.0 (simplified)
+%% Layout dimensions follow the Glossa A4 text block:
+%% 150 mm text width, 237 mm text height.
+%% Authors should edit main.tex only.
+%% Compile with XeLaTeX or LuaLaTeX.
+%% =====================================================================
+
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{elr-style}[2026/08/23 v10.1 ELR Linguistic Horizon style (simplified)]
+
+%% ---------------------------------------------------------------------
+%% Engine and fonts
+%% ---------------------------------------------------------------------
+\RequirePackage{iftex}
+\ifPDFTeX
+  \PackageError{elr-style}{pdfLaTeX is not supported}{Use XeLaTeX or LuaLaTeX.}
+\fi
+\RequirePackage{etoolbox}
+\RequirePackage{fontspec}
+\IfFileExists{xeCJK.sty}{%
+  \ifXeTeX
+    \RequirePackage{xeCJK}
+    \IfFontExistsTF{Noto Serif CJK SC}{%
+      \setCJKmainfont{Noto Serif CJK SC}[BoldFont=Noto Serif CJK SC Bold]%
+    }{%
+      \IfFontExistsTF{FandolSong-Regular}{\setCJKmainfont{FandolSong-Regular}}{}%
+    }
+    \IfFontExistsTF{Noto Sans CJK SC}{%
+      \setCJKsansfont{Noto Sans CJK SC}[BoldFont=Noto Sans CJK SC Bold]%
+    }{%
+      \IfFontExistsTF{FandolHei-Regular}{\setCJKsansfont{FandolHei-Regular}}{}%
+    }
+  \fi
+}{}
+
+% Charis SIL is particularly suitable for linguistics and IPA.
+% Portable fallbacks are provided for Overleaf installations.
+\IfFontExistsTF{Charis SIL}{%
+  \setmainfont{Charis SIL}[Ligatures=TeX]%
+}{%
+  \IfFontExistsTF{Times New Roman}{%
+    \setmainfont{Times New Roman}[Ligatures=TeX]%
+  }{%
+    \setmainfont{TeX Gyre Termes}[Ligatures=TeX]%
+  }%
+}
+
+\IfFontExistsTF{Fira Sans}{%
+  \setsansfont{Fira Sans}[Scale=0.95]%
+}{%
+  \setsansfont{TeX Gyre Heros}[Scale=0.94]%
+}
+
+%% ---------------------------------------------------------------------
+%% Packages
+%% ---------------------------------------------------------------------
+\RequirePackage{microtype}
+\RequirePackage{graphicx}
+\RequirePackage{xcolor}
+\RequirePackage{setspace}
+\RequirePackage{titlesec}
+\RequirePackage{fancyhdr}
+\RequirePackage[most]{tcolorbox}
+\RequirePackage{tikz}
+\RequirePackage{booktabs}
+\RequirePackage{array}
+\RequirePackage{caption}
+\IfFileExists{linguex.sty}{\RequirePackage{linguex}}{}
+\RequirePackage[linguistics]{forest}
+\RequirePackage{xparse}
+\RequirePackage{etoolbox}
+
+%% =====================================================================
+%% PAGE DIMENSIONS -- GLOSSA-BASED A4 TEXT BLOCK
+%% =====================================================================
+\setlength{\paperheight}{297mm}
+\setlength{\paperwidth}{210mm}
+\setlength{\textwidth}{150mm}
+\setlength{\textheight}{237mm}
+\setlength{\oddsidemargin}{0.46cm}
+\setlength{\evensidemargin}{0.46cm}
+\setlength{\topmargin}{-13mm}
+\setlength{\headheight}{8.6mm}
+\setlength{\headsep}{14.0mm}
+\setlength{\footskip}{0.46cm}
+\setlength{\parskip}{0pt}
+\setlength{\parindent}{0.1in}
+\raggedbottom
+
+%% =====================================================================
+%% ELR LINGUISTIC HORIZON PALETTE / 语言探索色
+%% =====================================================================
+\definecolor{ELRInk}{HTML}{1F242A}
+\definecolor{ELRText}{HTML}{30363D}
+\definecolor{ELRMuted}{HTML}{68717A}
+\definecolor{ELRSoft}{HTML}{8A929B}
+
+\definecolor{ELRBlue}{HTML}{163A63}
+\definecolor{ELRDeepBlue}{HTML}{102A47}
+\definecolor{ELRGold}{HTML}{B7924A}
+\definecolor{ELRLightGold}{HTML}{D7C18A}
+\definecolor{ELRPaleGold}{HTML}{EFE6D2}
+
+% Issue-family accent colours.
+% ELR regular issues use cyan/teal; special issues use purple.
+\definecolor{ELRRegularCyan}{HTML}{1AA79F}
+\definecolor{ELRRegularCyanDark}{HTML}{137B76}
+\definecolor{ELRSpecialPurple}{HTML}{8A4FD1}
+\definecolor{ELRSpecialPurpleDark}{HTML}{6838A2}
+
+\definecolor{ELRLine}{HTML}{DDE3E8}
+\definecolor{ELRBlueMist}{HTML}{F6F8FA}
+\definecolor{ELRWarmWhite}{HTML}{FCFBF8}
+\definecolor{ELRFrameSoft}{HTML}{E8EDF1}
+
+\color{ELRText}
+
+%% ---------------------------------------------------------------------
+%% Typography
+%% ---------------------------------------------------------------------
+\setstretch{1.12}
+\emergencystretch=1em
+\clubpenalty=10000
+\widowpenalty=10000
+
+% Modern sans headings; gold numbers, blue titles.
+\newcommand{\ELRAccentText}[1]{%
+  \ifdefstring{\ELR@series}{ELR}{\color{ELRRegularCyanDark}#1}{\color{ELRSpecialPurpleDark}#1}%
+}
+
+\titleformat{\section}
+  {\sffamily\fontsize{15.2}{18.2}\selectfont\bfseries\color{ELRBlue}}
+  {\ELRAccentText{\thesection}}
+  {0.72em}{}
+\titlespacing*{\section}{0pt}{1.55em}{0.58em}
+
+\titleformat{\subsection}
+  {\sffamily\fontsize{12.4}{14.8}\selectfont\bfseries\color{ELRDeepBlue}}
+  {\ELRAccentText{\thesubsection}}
+  {0.68em}{}
+\titlespacing*{\subsection}{0pt}{1.15em}{0.42em}
+
+\titleformat{\subsubsection}
+  {\sffamily\normalsize\bfseries\color{ELRMuted}}
+  {\ELRAccentText{\thesubsubsection}}
+  {0.62em}{}
+\titlespacing*{\subsubsection}{0pt}{0.95em}{0.32em}
+
+\captionsetup{
+  font=small,
+  labelfont={bf,color=ELRBlue},
+  textfont={color=ELRText},
+  labelsep=period,
+  skip=5pt
+}
+
+%% ---------------------------------------------------------------------
+%% Footnotes / footers -- disabled by default, with a subtle gold rule
+%% ---------------------------------------------------------------------
+% Automatic page-footer decoration (publication notice, history box) has
+% been removed. Manual \footnote{} calls still work and use a thin gold
+% separator consistent with the template palette.
+\renewcommand{\footrulewidth}{0pt}
+\renewcommand{\footnoterule}{%
+  \kern -3pt
+  {\color{ELRGold}\hrule width 0.30\textwidth height 0.45pt}%
+  \kern 3.4pt
+}
+
+%% =====================================================================
+%% ARTICLE METADATA
+%% =====================================================================
+\newcommand{\ELR@title}{Article title}
+\newcommand{\ELR@shorttitle}{Article title}
+\newcommand{\ELR@author}{Author Name}
+\newcommand{\ELR@affiliation}{Affiliation}
+\newcommand{\ELR@email}{author@example.com}
+\newcommand{\ELR@citationauthor}{Author, Name}
+\newcommand{\ELR@abstract}{Abstract text.}
+\newcommand{\ELR@keywords}{keyword one; keyword two}
+\newcommand{\ELR@year}{2026}
+\newcommand{\ELR@volume}{1}
+\newcommand{\ELR@issue}{1}
+\newcommand{\ELR@startpage}{1}
+\newcommand{\ELR@endpage}{45}
+\newcommand{\ELR@doi}{10.XXXX/elr.0000}
+\newcommand{\ELR@received}{TBA}
+\newcommand{\ELR@revinvite}{TBA}
+\newcommand{\ELR@revised}{TBA}
+\newcommand{\ELR@accepted}{TBA}
+\newcommand{\ELR@published}{TBA}
+\newcommand{\ELR@series}{ELR}
+
+\newcommand{\ELRArticleTitle}[1]{\gdef\ELR@title{#1}}
+\newcommand{\ELRShortTitle}[1]{\gdef\ELR@shorttitle{#1}}
+\newcommand{\ELRAuthor}[1]{\gdef\ELR@author{#1}}
+\newcommand{\ELRAffiliation}[1]{\gdef\ELR@affiliation{#1}}
+\newcommand{\ELREmail}[1]{\gdef\ELR@email{#1}}
+\newcommand{\ELRCitationAuthor}[1]{\gdef\ELR@citationauthor{#1}}
+\newcommand{\ELRAbstract}[1]{\gdef\ELR@abstract{#1}}
+\newcommand{\ELRKeywords}[1]{\gdef\ELR@keywords{#1}}
+\newcommand{\ELRYear}[1]{\gdef\ELR@year{#1}}
+\newcommand{\ELRVolume}[1]{\gdef\ELR@volume{#1}}
+\newcommand{\ELRIssue}[1]{\gdef\ELR@issue{#1}}
+\newcommand{\ELRPages}[2]{\gdef\ELR@startpage{#1}\gdef\ELR@endpage{#2}}
+\newcommand{\ELRDOI}[1]{\gdef\ELR@doi{#1}}
+\newcommand{\ELRReceived}[1]{\gdef\ELR@received{#1}}
+\newcommand{\ELRRevisionInvited}[1]{\gdef\ELR@revinvite{#1}}
+\newcommand{\ELRRevised}[1]{\gdef\ELR@revised{#1}}
+\newcommand{\ELRAccepted}[1]{\gdef\ELR@accepted{#1}}
+\newcommand{\ELRPublished}[1]{\gdef\ELR@published{#1}}
+
+% Issue/collection code kept for compatibility; no longer displayed
+% anywhere by default (masthead and header have been simplified).
+\newcommand{\ELRSeries}[1]{\gdef\ELR@series{#1}}
+
+\newif\ifELRanonymous
+\ELRanonymousfalse
+\newcommand{\ELRAnonymousOn}{\ELRanonymoustrue}
+\newcommand{\ELRAnonymousOff}{\ELRanonymousfalse}
+
+%% =====================================================================
+%% BRANDING / LABELS
+%% =====================================================================
+% The "abstract" panel is now labelled "Topic" and no longer prints keywords.
+\newcommand{\ELRAbstractLabel}{Abstract}
+
+% Topic panel: editorial box, square corners, subtle background.
+\newtcolorbox{ELRAbstractBox}{
+  enhanced,
+  colback=ELRBlueMist,
+  colframe=ELRBlueMist,
+  boxrule=0pt,
+  arc=0pt,
+  left=9pt,right=9pt,top=7pt,bottom=7pt,
+  borderline west={1.6pt}{0pt}{ELRGold},
+  before skip=0pt,
+  after skip=0pt
+}
+
+\forestset{
+  elrtree/.style={
+    for tree={
+      align=center,
+      inner sep=1.5pt,
+      l sep=9mm,
+      s sep=4mm,
+      edge={draw=ELRBlue,line width=0.45pt},
+      font=\small
+    }
+  },
+  elrhighlight/.style={
+    tikz+={\fill[ELRGold] (.south) circle[radius=1.1pt];}
+  }
+}
+
+%% ---------------------------------------------------------------------
+%% Hyperlinks (after colours exist)
+%% ---------------------------------------------------------------------
+\RequirePackage[colorlinks=true,
+  linkcolor=ELRDeepBlue,
+  citecolor=ELRDeepBlue,
+  urlcolor=ELRBlue]{hyperref}
+\urlstyle{same}
+
+%% =====================================================================
+%% RUNNING HEADER -- simplified: article title on the left, page number
+%% only on the right. No badge, no year/issue, no footer.
+%% =====================================================================
+\pagestyle{fancy}
+\fancyhf{}
+\fancyhead[L]{%
+  \sffamily\footnotesize\color{ELRBlue}%
+  \ELR@title%
+}
+\fancyhead[R]{%
+  \sffamily\footnotesize\bfseries\color{ELRDeepBlue}%
+  \thepage%
+}
+\renewcommand{\headrulewidth}{0.34pt}
+\renewcommand{\headrule}{%
+  \hbox to\headwidth{%
+    \color{ELRLightGold}%
+    \leaders\hrule height \headrulewidth\hfill
+  }%
+}
+\renewcommand{\footrulewidth}{0pt}
+
+\fancypagestyle{firstpage}{%
+  \fancyhf{}%
+  \renewcommand{\headrulewidth}{0pt}%
+  \renewcommand{\footrulewidth}{0pt}%
+}
+
+%% =====================================================================
+%% FRONT MATTER -- masthead / citation block and keywords removed.
+%% Layout: title + author + affiliation + email, Topic panel (no logo, no rule).
+%% =====================================================================
+\newcommand{\ELRMakeTitle}{%
+  \setcounter{page}{\ELR@startpage}%
+  \thispagestyle{firstpage}%
+  % Page 1 has no running header, but its space (headheight + headsep) is still
+  % reserved: take it back so the title starts at the header's height.
+  \vspace*{\dimexpr-\headheight-\headsep\relax}%
+
+  % --- Article title ---
+  \begin{center}
+    {\fontsize{14}{34}\selectfont\bfseries\color{ELRDeepBlue}\ELR@title}\par
+    \vspace{0.68em}
+    \ifELRanonymous
+      {\sffamily\normalsize\bfseries\color{ELRBlue}Anonymous Author}\par
+    \else
+      \ifdefstring{\ELR@series}{ELR}{%
+        {\sffamily\fontsize{10.8}{13}\selectfont\bfseries\color{ELRRegularCyanDark}\ELR@author}\par
+      }{%
+        {\sffamily\fontsize{10.8}{13}\selectfont\bfseries\color{ELRSpecialPurpleDark}\ELR@author}\par
+      }
+      \vspace{0.08em}
+      {\fontsize{9.4}{11.2}\selectfont\color{ELRMuted}\ELR@affiliation}\par
+      \vspace{0.04em}
+      {\fontsize{8.2}{9.8}\selectfont\color{ELRSoft}\texttt{\ELR@email}}\par
+    \fi
+  \end{center}
+
+  \vspace{0.50em}
+
+  % --- Topic panel (formerly "Abstract"); no keywords line ---
+  \begin{ELRAbstractBox}
+    \noindent
+    {\sffamily\fontsize{9}{11}\selectfont\bfseries\ELRAccentText{\ELRAbstractLabel}}
+    \hspace{0.55em}{\color{ELRGold}\rule{1.55cm}{0.65pt}}\par
+    \vspace{0.36em}
+    {\fontsize{9.6}{12.2}\selectfont\setlength{\parindent}{0pt}\color{ELRText}\ELR@abstract\par}
+  \end{ELRAbstractBox}
+  \vspace{1em}
+
+}

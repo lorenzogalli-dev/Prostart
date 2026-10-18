@@ -1,6 +1,6 @@
 # EspNowLrTest — ESP-NOW long range between two ESP32-C3, measured in the field
 
-Tests architecture **E** from `HANDOFF.md` (2026-09-22): ESP-A at the blocks,
+Tests architecture **E** from `Docs/HANDOFF.md` (2026-09-22): ESP-A at the blocks,
 ESP-B at the finish beside the phone, ESP-NOW between them. It answers three
 questions, and touches nothing else in the repo:
 

@@ -20,7 +20,7 @@ moving.
 
 Note what is being demonstrated: this is the offline detector. The firmware
 agrees with it to the microsecond on 49 of the 56 captures that carry a board
-verdict; see HANDOFF.md, 2026-09-15.
+verdict; see Docs/HANDOFF.md, 2026-09-15.
 
 Usage:
     python3 Arduino/AlgorithmRealTime/Python_Tools/sweep_threshold.py
@@ -39,7 +39,7 @@ import start_detector as sd
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 DATA = os.path.join(REPO, "Data")
-FIG = os.path.join(REPO, "Docs", "threshold_sweep.pdf")
+FIG = os.path.join(REPO, "Docs", "figures", "threshold_sweep.pdf")
 
 # One sample at the measured 865.8 Hz. The picker cannot resolve better than
 # this, so it is the line "unchanged" is judged against.

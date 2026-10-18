@@ -23,7 +23,7 @@ No ESP-NOW yet.
   arduino-cli compile --fqbn esp32:esp32:nologo_esp32c3_super_mini Arduino/AlgorithmRealTimeESP32
   arduino-cli upload  --fqbn esp32:esp32:nologo_esp32c3_super_mini -p /dev/cu.usbmodemXXXX Arduino/AlgorithmRealTimeESP32
   ```
-  (`arduino-cli` is inside the Arduino IDE app; see BUILD.md.) Last build: 52% flash, 48% RAM.
+  (`arduino-cli` is inside the Arduino IDE app; see Docs/BUILD.md.) Last build: 52% flash, 48% RAM.
 - If the board is off (light sleep) the USB port is gone. Switch it on, or hold
   the button (or BOOT, same pin), tap RESET, release, then upload.
 - Arduino's `ctags` is x86: the Mac needs Rosetta (installed 2026-10-16).

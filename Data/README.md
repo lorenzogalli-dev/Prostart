@@ -29,7 +29,7 @@ Reaction time, valid starts only:
 
 About 19 ms faster, and far tighter: 37 ms of spread against 172 ms. That is
 Piéron's law — reaction time falls with stimulus intensity — and it is the
-reason `HANDOFF.md` says no number from `090926` may be used to tune anything.
+reason `Docs/HANDOFF.md` says no number from `090926` may be used to tune anything.
 The stimulus behind those numbers is not the one the device now produces.
 
 From `bench_140926/` onward a capture also carries `arm_t_s` (when the board

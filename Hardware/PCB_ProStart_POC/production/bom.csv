@@ -1,0 +1,9 @@
+﻿Designator,Footprint,Quantity,Value,LCSC Part #
+BZ1,Buzzer_12x9.5RM7.6,1,Buzzer,
+C1,C_Disc_D3.8mm_W2.6mm_P2.50mm,1,100 nF,
+C2,CP_Radial_D5.0mm_P2.00mm,1,10uF,
+J1,PinSocket_1x08_P2.54mm_Vertical,1,LCD Display,
+J2,PinSocket_1x06_P2.54mm_Vertical,1,IMU,
+J3,PinSocket_1x04_P2.54mm_Vertical,1,IMU 2,
+SW1,SW_PUSH_6mm,1,Button,
+U1,DIP-ESP,1,ESP32C3-SUPERMINI,C9900147397

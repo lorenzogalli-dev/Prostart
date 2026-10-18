@@ -3,6 +3,53 @@
 Last updated: 2026-10-16. Written for an agent starting with no prior context.
 Sections are newest first.
 
+## READ THIS FIRST — 2026-10-18: final paper drafted; folders moved
+
+- **Validated by the team (16-17/10, not by an agent):** reaction time vs 240 fps
+  video with an LED lit at "go" agreed within ~8 ms (LED gives the go frame
+  exactly; the push frame is picked by eye; 4.2 ms per frame). Photofinish vs
+  a 60 fps reference video: 10 ms; hand timing ~0.24 s fast. Raw data not in
+  the repo yet; per-start numbers (N) still to be filled into the paper.
+- **Final paper:** `Papers/Final Paper/main.tex` (3 pages of body + refs +
+  appendix), compile with **LuaLaTeX** (XeLaTeX here cannot find TeX Gyre
+  Heros). Logo and blue/gold rule removed from `elr-style.sty`. Red `\tbd{}`
+  marks values still missing (N starts, parts cost); `placeholder_*.png` are
+  the photos/plots still to come (finished unit, app screenshots, PCB photo,
+  per-start validation plot). `figures/make_figures.py` rebuilds the plots and
+  the enclosure render from the repo's data/STL.
+- **Moved (nothing in code referenced them):** `Half Time Paper/` →
+  `Papers/Half-Time Paper/`; `PCB_ProStart_POC/` → `Hardware/PCB_ProStart_POC/`
+  (KiCad file names unchanged); the STL folder → `Hardware/Enclosure/`
+  (`start_box.stl`, `start_box_lid.stl`, `start_box_button.stl`; exported in
+  metres). README updated.
+- **Paper state at the end of 18/10** (the user edits `main.tex` too: read it
+  before touching it, never overwrite their wording). Body = 3 full pages:
+  Introduction, System design (architecture TikZ, hardware, start sequence,
+  onset detection, app + clock sync, AI photo finish), Evaluation (timing
+  path + Daria's 138 ms start from the first prototype, reaction vs 240 fps,
+  photo finish, error-scale plot, Limitations), Conclusions. Appendix:
+  source code, hardware (breadboard prototype, schematic, PCB, BOM),
+  firmware parameters + BLE protocol, threshold sweep.
+  **Still to do for submission:**
+  1. Fig. 6: Bland-Altman of board vs 240 fps video (x = mean, y = board -
+     video, bias line and ±1.96 SD). Needs per-start pairs from the team; then
+     replace "about 8 ms" and the red N with the measured bias/limits.
+  2. Photos/screens replacing `placeholder_*.png`: finished unit on the block
+     (Fig. 1 left), app overview (Fig. 1 right), app result screens (Fig. 4),
+     app result frame at the crossing (Fig. 7), assembled PCB (appendix).
+  3. Parts cost (red in the conclusions).
+  4. Check with the team: how the 60 fps photofinish reference and the hand
+     timing were done; what the lid's holes are for (described from the render).
+- **Same day, second pass:** this file and `RUN.md`, `BUILD.md` now live in
+  `Docs/`; the root `INFO.md` is `Docs/ALGORITHM.md` (older sections below still
+  say `INFO.md`: that one; per-sketch `INFO.md` files are unchanged).
+  `Docs/figures/` (architecture, diagrams, `threshold_sweep.pdf`, where
+  `sweep_threshold.py` now writes it), `Docs/hardware_photos/` (was
+  `Docs/hardware/`), `Docs/references/`. `Photofinish_Python/` is now
+  `AI_Torso_Detector/` (Swift comments updated). `old_python_algorithm/start_detector.py`
+  is `Arduino/AlgorithmRealTime/Python_Tools/archive/start_detector_pre_arming_gate.py`:
+  it is the reaction-time detector before the arming gate, not photofinish code.
+
 ## READ THIS FIRST — 2026-10-16 (evening): gym false starts were a FIFO bug; v6 stores nothing on the board, runs go to the app
 
 **The gym session** (`Arduino/AlgorithmRealTimeESP32/Data/gym_161026/`, runs

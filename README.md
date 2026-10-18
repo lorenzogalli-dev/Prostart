@@ -8,7 +8,7 @@
 
 ## 🖼️ System at a glance
 
-![System overview: the start unit on the starting block, a Wi-Fi link (ESP-NOW long range) to a small ESP32 box at the finish, and a Bluetooth link from that box to the phone on a tripod filming the finish line.](Docs/architecture.png)
+![System overview: the start unit on the starting block, a Wi-Fi link (ESP-NOW long range) to a small ESP32 box at the finish, and a Bluetooth link from that box to the phone on a tripod filming the finish line.](Docs/figures/architecture.png)
 
 *The start unit times the reaction locally, in microseconds, on its own clock. The radio chain only has to deliver the result and the start instant to the phone, which films the finish.*
 
@@ -23,7 +23,7 @@ This repository contains the design and implementation of a **two-part system**:
 
 The goal isn't to replace certified competition timing systems, but to bring a meaningful fraction of their precision — enough to be genuinely useful for training, testing, and local competitions — down to a price point and portability that a club or an individual athlete can actually afford. 💪
 
-Costs, pricing, and a rough revenue projection are laid out in [Business Plan](#-business-plan) below. The technical write-up for the course is the half-time paper, in [`Half Time Paper/`](./Half%20Time%20Paper/).
+Costs, pricing, and a rough revenue projection are laid out in [Business Plan](#-business-plan) below. The technical write-up for the course is the half-time paper, in [`Papers/Half-Time Paper/`](./Papers/Half-Time%20Paper/); the final paper (LaTeX) is in [`Papers/Final Paper/`](./Papers/Final%20Paper/).
 
 ---
 
@@ -54,7 +54,7 @@ XIAO nRF52840 Sense ──wire── ESP32 #1  ──ESP-NOW long range──  E
 
 ### Why this chain, and not a single link
 
-Each choice here was measured, not assumed (details in `HANDOFF.md`):
+Each choice here was measured, not assumed (details in `Docs/HANDOFF.md`):
 
 1. **BLE alone reaches ~25 m.** Sprint start to finish is 100 m.
 2. **One ESP32 on Wi-Fi straight to the phone reaches 60-70 m.** It was measured in the field with `Arduino/WifiFieldTest`: clean to ~50 m and dead at 70 m (-91 dBm), 3-4 dB short of 100 m. On top of that, the phone would have to join a device network before every session.
@@ -110,7 +110,7 @@ Each choice here was measured, not assumed (details in `HANDOFF.md`):
 - **Firmware (implemented):** Arduino IDE (C/C++) on the XIAO, `Seeeduino:mbed` core (the `nrf52` core silently degrades `micros()` to ~1 ms), and the vendored Seeed `LSM6DS3` library. `Arduino/AlgorithmRealTime/` runs the start sequence and the on-device detector. `Arduino/WifiFieldTest/` is the ESP32-C3 sketch the range was measured with.
 - **Firmware (not yet implemented):** the XIAO → ESP32 pin handover, the ESP-NOW long-range link, and the relay's BLE bridge. The first thing to test is whether ESP32 #2 can run long range and a link to the phone at the same time on its single 2.4 GHz radio. Tracked on the [backlog](https://github.com/users/lorenzogalli-dev/projects/4).
 - **App:** Flutter (Dart), in `prostart/`. Today it is the UI with mock data. The previous app, with a working BLE layer (`flutter_blue_plus`), was removed on 2026-10-15; it is in git history before that date (`old_flutter_app/prostart/lib/services/ble_service.dart`).
-- **Capture/analysis tooling:** Python (`capture.py`, `start_detector.py`, `sweep_threshold.py`). See [BUILD.md](./BUILD.md) for exact versions and setup.
+- **Capture/analysis tooling:** Python (`capture.py`, `start_detector.py`, `sweep_threshold.py`). See [BUILD.md](./Docs/BUILD.md) for exact versions and setup.
 - **Photo-finish AI pipeline:** computer-vision torso-crossing detection + sub-frame interpolation *(premium tier, planned)*.
 
 ---
@@ -193,12 +193,21 @@ Reaction-Time-System/
 │   └── libraries/               # vendored board libraries (Seeed LSM6DS3)
 ├── prostart/                    # Flutter app (current; UI with mock data for now)
 ├── Data/                        # recorded CSV captures and their plots
-├── Docs/                        # architecture image, diagrams, figures
-├── Half Time Paper/             # the course's half-time paper (PDF)
-├── RUN.md                       # what each file is and the command to run it
-├── INFO.md                      # how the detection algorithm works, and why
-├── BUILD.md                     # exact versions and how to run every component
-├── HANDOFF.md                   # working notes for an agent picking this up
+├── AI_Torso_Detector/           # photo-finish reference (Python, MediaPipe): torso crossing the line
+├── Docs/
+│   ├── HANDOFF.md               # working notes for an agent picking this up
+│   ├── ALGORITHM.md             # how the detection algorithm works, and why
+│   ├── RUN.md                   # what each file is and the command to run it
+│   ├── BUILD.md                 # exact versions and how to run every component
+│   ├── figures/                 # architecture image, diagrams, threshold sweep
+│   ├── hardware_photos/         # breadboard prototype, display pinout
+│   └── references/              # literature (PDF)
+├── Hardware/
+│   ├── PCB_ProStart_POC/        # KiCad project of the start-unit PCB, Gerbers, BOM
+│   └── Enclosure/               # 3D-printed box: start_box, start_box_lid, start_box_button (STL)
+├── Papers/
+│   ├── Half-Time Paper/         # the course's half-time paper (PDF)
+│   └── Final Paper/             # final short paper: main.tex, elr-style.sty, figures/
 └── README.md
 ```
 
@@ -217,7 +226,7 @@ Reaction-Time-System/
 2. `cd prostart && flutter pub get`
 3. `flutter run`
 
-For exact tool/library versions and the full step-by-step for both firmware and the Python capture tooling, see **[BUILD.md](./BUILD.md)**.
+For exact tool/library versions and the full step-by-step for both firmware and the Python capture tooling, see **[BUILD.md](./Docs/BUILD.md)**.
 
 ---
 
@@ -230,7 +239,7 @@ What we're actually seeing right now, not a wishlist:
 - ⏱️ **The phone camera is the timing bottleneck** for the photofinish: frame rate, rolling shutter and the frame-timestamp offset, none of them measured yet on the phones that will be used.
 - 🔊 **Buzzer acoustic latency (5-20 ms), still unmeasured.** It enters every reaction time, and so does the buzzer's audibility on a noisy track.
 - 🔋 **Battery life** under real, extended use, for both units.
-- 🛠️ **Firmware reliability.** An earlier firmware combining BLE, a hardware FIFO, and a software PLL on the XIAO hung or crash-looped unpredictably on two boards. It was replaced by the deliberately minimal firmware in `Arduino/AlgorithmRealTime/`, now verified on real hardware. Moving the radio to a separate ESP32 is also what keeps the XIAO that simple. Full write-up in `HANDOFF.md`.
+- 🛠️ **Firmware reliability.** An earlier firmware combining BLE, a hardware FIFO, and a software PLL on the XIAO hung or crash-looped unpredictably on two boards. It was replaced by the deliberately minimal firmware in `Arduino/AlgorithmRealTime/`, now verified on real hardware. Moving the radio to a separate ESP32 is also what keeps the XIAO that simple. Full write-up in `Docs/HANDOFF.md`.
 
 ---
 
