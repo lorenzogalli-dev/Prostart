@@ -174,7 +174,7 @@ This is a back-of-the-envelope model to size the opportunity, not a forecast —
 ## 📂 Repository Structure
 
 ```
-Reaction-Time-System/
+Prostart/
 ├── Arduino/                     # Arduino sketches (.ino), one folder per sketch
 │   ├── AlgorithmRealTime/       # current firmware + its Python bench tooling
 │   │   ├── AlgorithmRealTime.ino   # start sequence, capture, on-device detector

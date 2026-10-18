@@ -120,7 +120,7 @@ A two-layer PCB (65.5$\times$34~mm, Appendix~\ref{app:hw}) carries an ESP32-C3 S
 A press starts a 3~s countdown, then ``on your marks''; ``set'' follows 20--25~s later. The unit then waits until the sprinter is measured still (horizontal acceleration under 15~mg for 200~ms) and fires ``go'' a random 0.7--1.5~s later, so the rhythm cannot be learned. Each beep is a 4~kHz, 100~ms tone started by two register writes and stamped at that instant, so no software latency enters the reaction time.
 
 \paragraph{Onset detection.}
-The BMI270 runs at 800~Hz nominal (803.6~Hz measured), $\pm$16~g. Gravity is estimated at rest as a vector, so every sample splits into vertical and horizontal parts whatever the mounting angle. An STA/LTA trigger \cite{allen} (15/800~ms windows, ratio 6, 20~mg floor) decides that the athlete moved; Maeda's AIC picker \cite{maeda} then finds, from 150~ms before to 50~ms after the trigger, the sample that best splits a quiet segment from an active one, and reports it as the onset. Because this second step has no threshold, the onset does not move with the trigger level: across 79 starts and thresholds of 10--50~mg it stayed on the same sample in 70 starts and within one in 74, while a threshold-only detector drifted by a median 9.3~ms (Appendix~\ref{app:sweep}). Runs are stored on flash and can be exported as CSV.
+The BMI270 runs at 800~Hz nominal (803.2~Hz measured), $\pm$16~g. Gravity is estimated at rest as a vector, so every sample splits into vertical and horizontal parts whatever the mounting angle. An STA/LTA trigger \cite{allen} (15/800~ms windows, ratio 6, 20~mg floor) decides that the athlete moved; Maeda's AIC picker \cite{maeda} then finds, from 150~ms before to 50~ms after the trigger, the sample that best splits a quiet segment from an active one, and reports it as the onset. Because this second step has no threshold, the onset does not move with the trigger level: across 79 starts and thresholds of 10--50~mg it stayed on the same sample in 70 starts and within one in 74, while a threshold-only detector drifted by a median 9.3~ms (Appendix~\ref{app:sweep}). After the result the run is sent to the app over BLE and saved there as CSV.
 
 \paragraph{App and clock synchronization.}
 The Flutter app (iOS and Android) connects to the unit's GATT service. In \emph{Reaction} mode it mirrors the unit's phases and shows its result. In \emph{Photofinish} mode the board's ``go'' instant has to be expressed on the phone's clock. Between ``on your marks'' and ``set'' the phone pings the board; the board answers with its receive and send times. Over a 10~s window the app keeps the minimum of each one-way difference separately,
@@ -144,7 +144,7 @@ The phone stands in line with the finish, and the user drags a line onto the pai
 %% =====================================================================
 
 \paragraph{Timing path.}
-On the PCB the unit samples at 803.6~Hz with no gaps and no dropped samples, a maximum interval of 1.25~ms, and 0.55~$\mu$s timestamp jitter. Re-running the detector offline on every capture gives the board's onset on the same sample (e.g.\ 163.8~ms). The unit's own resolution is therefore one sample, 1.2~ms. Figure~\ref{fig:start} shows what the detector sees in a block start.
+On the PCB the unit samples at 803.2~Hz with no gaps and no dropped samples, and 0.9~$\mu$s timestamp jitter (2.8~$\mu$s with the phone connected). Re-running the detector offline on every capture gives the board's onset on the same sample (e.g.\ 163.8~ms). The unit's own resolution is therefore one sample, 1.2~ms. Figure~\ref{fig:start} shows what the detector sees in a block start.
 
 \begin{colfig}
 \includegraphics[width=\linewidth]{start_138ms_daria.png}
@@ -275,7 +275,7 @@ Next, a 1000~fps camera will check the unit's 1.2~ms resolution directly and mea
 \section{Source code}
 \label{app:code}
 
-Firmware, app, photo-finish reference, analysis tools, PCB project and enclosure files: \url{https://github.com/lorenzogalli-dev/Reaction-Time-System}. The firmware is in \texttt{Arduino/AlgorithmRealTimeESP32/}, the app in \texttt{prostart/}, the KiCad project in \texttt{Hardware/PCB\_ProStart\_POC/}, the STL files in \texttt{Hardware/Enclosure/}.
+Firmware, app, photo-finish reference, analysis tools, PCB project and enclosure files: \url{https://github.com/lorenzogalli-dev/Prostart}. The firmware is in \texttt{Arduino/AlgorithmRealTimeESP32/}, the app in \texttt{prostart/}, the KiCad project in \texttt{Hardware/PCB\_ProStart\_POC/}, the STL files in \texttt{Hardware/Enclosure/}.
 
 \section{Hardware}
 \label{app:hw}
@@ -321,6 +321,7 @@ J1 & 1.77'' ST7735 TFT, 128$\times$160 & SCK 8, MOSI 10, CS 7, DC 6, RES 5, BL 4
 SW1 & 6~mm push button & GPIO9 to GND \\
 BZ1 & 12~mm piezo buzzer & GPIO1 / GPIO2, antiphase \\
 C1, C2 & 100~nF, 10~$\mu$F & 3.3~V rail \\
+D1 & LED + 100--220~$\Omega$ (validation only) & GPIO21, lit at ``go'' \\
 \bottomrule
 \end{tabular}
 \caption{Bill of materials and pin map.}
@@ -337,13 +338,13 @@ C1, C2 & 100~nF, 10~$\mu$F & 3.3~V rail \\
 \toprule
 Parameter & Value \\
 \midrule
-Sampling & BMI270, 800~Hz nominal (803.6~Hz measured), $\pm$16~g, 0.488~mg/LSB, FIFO 1.28~s, data-ready stamped in the ISR (1~$\mu$s clock) \\
+Sampling & BMI270, 800~Hz nominal (803.2~Hz measured), $\pm$16~g, 0.488~mg/LSB, FIFO 337 frames (0.42~s), data-ready stamped in the ISR (1~$\mu$s clock) \\
 Sequence & countdown 3~s; marks $\rightarrow$ set 20--25~s; arm when $<$15~mg for 200~ms (at least 800~ms after set, at most 4~s); go 0.7--1.5~s after arming \\
 Beep & 4~kHz, 100~ms, two register writes, stamped at the write \\
 STA/LTA & 15~ms / 800~ms, on at ratio 6, off at 2, 20~mg floor, 15~ms confirmation \\
 AIC window & 150~ms before, 50~ms after the trigger \\
 False start & onset $<$ 100~ms after go \\
-Storage & 25 runs on internal flash, CSV export over USB \\
+Storage & none on the board: the run waits in RAM until the app confirms it has saved it \\
 \bottomrule
 \end{tabularx}
 \caption{Start-unit parameters.}
@@ -359,6 +360,8 @@ Characteristic & Content \\
 \texttt{event} (notify) & type, counter (a gap reveals a lost event); countdown digit; marks/set/go board time ($\mu$s); result: verdict, reaction time, onset and go times \\
 \texttt{ping} (write) & 16-bit sequence number from the phone \\
 \texttt{pong} (notify) & sequence, board receive time, board send time; answered only before ``set'' \\
+\texttt{data} (notify) & the finished run: run info, samples (24 per packet on iOS), end marker \\
+\texttt{ctrl} (write) & the app asks for a run or a missing range, and confirms it was saved \\
 \bottomrule
 \end{tabularx}
 \caption{BLE GATT service of the start unit. Board times are 32-bit microseconds, unwrapped by the app.}

@@ -40,6 +40,13 @@ Sections are newest first.
   3. Parts cost (red in the conclusions).
   4. Check with the team: how the 60 fps photofinish reference and the hand
      timing were done; what the lid's holes are for (described from the render).
+- **Same day, after the rename:** the GitHub repo is now `lorenzogalli-dev/Prostart`
+  (GitHub redirects the old URL) and the local folder `~/Desktop/Prostart`. The
+  paper was aligned with firmware v6 (no flash storage, runs saved by the app,
+  FIFO 337 frames, jitter 0.9 / 2.8 us, LED D1 on GPIO21) and links the new URL.
+  Slides: `Prostart_Slides.pptx` in the root, not in git (the demo video will
+  make it large); the 345 MB video that was in it was removed on request.
+  After the folder rename the iOS build needs `flutter clean && flutter pub get`.
 - **Same day, second pass:** this file and `RUN.md`, `BUILD.md` now live in
   `Docs/`; the root `INFO.md` is `Docs/ALGORITHM.md` (older sections below still
   say `INFO.md`: that one; per-sketch `INFO.md` files are unchanged).

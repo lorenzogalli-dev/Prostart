@@ -1,7 +1,7 @@
 # Recover starts whose sample stamps were shifted early by the FIFO-overwrite bug
 # (fixed 2026-10-16): measure the shift two ways, write corrected copies, re-judge.
 import sys, os, glob, io
-sys.path.insert(0, os.path.expanduser('~/Desktop/Reaction-Time-System/Arduino/AlgorithmRealTimeESP32/Python_Tools'))
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from start_detector import analyse
 src, dst = sys.argv[1], sys.argv[2]
 os.makedirs(dst, exist_ok=True)
