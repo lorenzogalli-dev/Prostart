@@ -42,9 +42,8 @@
 \ELRAbstract{%
 \fontsize{9}{11}\selectfont
 Sprint races are decided by milliseconds, yet the systems that time reaction and finish are costly \cite{vsath} and stay with federations and large clubs, while everyone else times by hand.
-We present Prostart: a start unit that mounts on any starting block, and a phone app that turns a smartphone into a photo finish.
-The unit, an ESP32-C3 with a BMI270 accelerometer sampled at 804~Hz on a custom PCB in a 3D-printed box, gives the start commands, finds the push-off with a threshold-independent two-stage onset picker, and sends the ``go'' instant over Bluetooth Low Energy to the phone, which times the chest crossing the line with an on-device pose model, a synchronized clock and sub-frame interpolation.
-Against 240~fps video with an LED marking ``go'', reaction times agreed within about 8~ms, the uncertainty of the video reference itself; finish times agreed with a 60~fps reference within 10~ms, a third of the one-frame (33~ms at 30~fps) target we set, whereas hand timing read about 0.24~s fast.
+We present Prostart: a start unit that mounts onto a standard starting block, and a phone app that turns a smartphone into a photo finish.
+The unit, an ESP32-C3 with a BMI270 accelerometer sampled at 804~Hz on a custom PCB in a 3D-printed box, gives the start commands, finds the push-off with a threshold-independent two-stage onset picker, and sends the ``go'' instant over Bluetooth Low Energy (BLE) to the phone, which times the chest crossing the line with an on-device pose model, a synchronized clock and sub-frame interpolation. Against 240~fps video with an LED marking ``go'', reaction times agreed within about 8~ms, the uncertainty of the video reference itself; finish times agreed with a 60~fps reference within 10~ms, a third of our one-frame target (33~ms at 30~fps), whereas hand timing read about 0.24~s fast.
 }
 
 \ELRSeries{ELR}
@@ -69,9 +68,8 @@ Photocells start when the torso breaks a beam, so their times exclude the reacti
 
 This paper contributes (i)~a start unit on one microcontroller, from schematic to PCB to printed enclosure, whose onset picker is independent of its threshold; (ii)~a Flutter app that mirrors the start and turns the phone camera into a photo finish, synchronized to the unit over BLE; and (iii)~a validation of both against high-speed video, with every error term named. The unit started as a breadboard prototype (Appendix~\ref{app:hw}) and is now a complete system: the unit in its printed box and the app (Figure~\ref{fig:evolution}).
 
- \begin{colfig}
-  \includegraphics[height=3.4cm]{placeholder_finished_unit.png}\hfill
-  \includegraphics[height=3.4cm]{placeholder_app.png}
+\begin{colfig}
+  \includegraphics[width=\linewidth]{unit-app.jpg}\hfill
   \captionof{figure}{The complete system: the start unit in its printed box on the block (left) and the app (right).}
   \label{fig:evolution}
 \end{colfig}
@@ -81,7 +79,7 @@ This paper contributes (i)~a start unit on one microcontroller, from schematic t
 %% =====================================================================
 
 \paragraph{Architecture.}
-Two devices and one radio link (Figure~\ref{fig:arch}). The start unit is the only judge: it sounds the commands, stamps them and the push-off on its own clock, and decides the verdict. The phone, standing at the finish, mirrors the start and times the finish; nothing it sends can change a start. A single ESP32-C3 reads the accelerometer and runs the radio. Each reading is timestamped in an interrupt and buffered in the sensor's FIFO, so Bluetooth traffic can delay it but never shift or lose it. A direct BLE link covers about 30~m, enough for start and acceleration work; for a full 100~m we plan a second ESP32-C3 at the finish, linked to the start unit over long-range ESP-NOW, which we field-tested beyond 100~m, and to the phone over BLE.
+The system has two devices joined by one radio link (Figure~\ref{fig:arch}). The start unit sounds the commands, stamps them and the push-off on its own clock, and decides the verdict. The phone, standing at the finish, mirrors the start and times the finish. The microcontroller at the start reads the accelerometer and runs the radio. Each reading is timestamped in an interrupt and buffered in the sensor's FIFO, so Bluetooth traffic can delay it but never silently shift or lose a reading. A direct BLE link covers about 30~m, enough for start and acceleration work; for a full 100~m we plan a second ESP32-C3 at the finish, linked to the start unit over long-range ESP-NOW, which we field-tested beyond 100~m, and to the phone over BLE.
 
 \begin{colfig}
 \begin{tikzpicture}[font=\sffamily\scriptsize, node distance=3.2mm,
@@ -103,48 +101,50 @@ Two devices and one radio link (Figure~\ref{fig:arch}). The start unit is the on
   \draw[arr] ([yshift=3mm]su.east) -- node[above, align=center]{events\\marks, set, go,\\result} ([yshift=3mm]ph.west);
   \draw[arr, <->] ([yshift=-5mm]su.east) -- node[below, align=center]{BLE ping/pong\\clock sync} ([yshift=-5mm]ph.west);
 \end{tikzpicture}
-\captionof{figure}{System overview. The start unit judges the start; the phone receives the ``go'' instant on its own clock and times the finish.}
+\captionof{figure}{System overview. The start unit judges the start; the phone gets the ``go'' on its clock and times the finish.}
 \label{fig:arch}
 \end{colfig}
 
 \paragraph{Hardware.}
-A two-layer PCB (65.5$\times$34~mm, Appendix~\ref{app:hw}) carries an ESP32-C3 SuperMini, a BMI270 accelerometer breakout on I$^2$C at 400~kHz with its data-ready line on an interrupt pin, a 1.77'' TFT on SPI, a push button, and a piezo driven in antiphase from two pins, which doubles its swing without an amplifier; 10~$\mu$F and 100~nF decouple the 3.3~V rail. The enclosure, 75$\times$99.5$\times$25~mm, was designed around the board and printed in three parts (Figure~\ref{fig:boxmain}): a box with standoffs for the PCB, a lid with a window for the display and openings for the buzzer, and a button cap.
+A two-layer PCB (65.5$\times$34~mm, Appendix~\ref{app:hw}) carries an ESP32-C3 SuperMini, a BMI270 accelerometer breakout on I$^2$C at 400~kHz with its data-ready line on an interrupt pin, a 1.77'' display on SPI, a push button, and a 12 mm passive piezo. The unit runs from a USB power bank through the SuperMini's USB-C port. The enclosure, 75$\times$99.5$\times$25~mm, was designed around the board and printed in three parts (Figure~\ref{fig:boxmain}, left): a box with standoffs for the PCB, a lid with cutouts for the display and for the buzzer, and a button cap. Lastly a standard strap holds the box to the block's rail. Figure~\ref{fig:boxmain} (right) shows the assembled board mounted on the standoffs inside the printed box.
 
 \begin{colfig}
-\includegraphics[width=0.78\linewidth]{fig_box.png}
-\captionof{figure}{The printed enclosure, exploded, rendered from its STL files.}
-\label{fig:boxmain}
+  \includegraphics[width=0.49\linewidth]{figures/fig-box(2).jpeg}\hfill
+  \includegraphics[width=0.49\linewidth]{pcb_box.png}
+  \captionof{figure}{The enclosure: exploded render of the three printed parts from their STL files (left) and the assembled PCB inside the printed box (right).}
+  \label{fig:boxmain}
 \end{colfig}
 
 \paragraph{Start sequence.}
-A press starts a 3~s countdown, then ``on your marks''; ``set'' follows 20--25~s later. The unit then waits until the sprinter is measured still (horizontal acceleration under 15~mg for 200~ms) and fires ``go'' a random 0.7--1.5~s later, so the rhythm cannot be learned. Each beep is a 4~kHz, 100~ms tone started by two register writes and stamped at that instant, so no software latency enters the reaction time.
+A press starts a 3~s countdown, then ``on your marks''; ``set'' follows 20--25~s later. The unit then waits until the sprinter is measured still (horizontal acceleration under 15~mg for 200~ms) and fires ``go'' a random 0.7--1.5~s later, which makes ``go'' hard to anticipate. Each beep is a 4~kHz, 100~ms tone and introduces no software latency into the reaction time.
 
 \paragraph{Onset detection.}
-The BMI270 runs at 800~Hz nominal (803.2~Hz measured), $\pm$16~g. Gravity is estimated at rest as a vector, so every sample splits into vertical and horizontal parts whatever the mounting angle. An STA/LTA trigger \cite{allen} (15/800~ms windows, ratio 6, 20~mg floor) decides that the athlete moved; Maeda's AIC picker \cite{maeda} then finds, from 150~ms before to 50~ms after the trigger, the sample that best splits a quiet segment from an active one, and reports it as the onset. Because this second step has no threshold, the onset does not move with the trigger level: across 79 starts and thresholds of 10--50~mg it stayed on the same sample in 70 starts and within one in 74, while a threshold-only detector drifted by a median 9.3~ms (Appendix~\ref{app:sweep}). After the result the run is sent to the app over BLE and saved there as CSV.
+The BMI270 runs at 800~Hz nominal (803.6~Hz measured), $\pm$16~g. Gravity is estimated at rest as a vector, so every sample splits into vertical and horizontal parts whatever the mounting angle. An STA/LTA trigger \cite{allen} (15/800~ms windows, ratio 6, 20~mg floor) decides that the athlete moved; Maeda's AIC picker \cite{maeda} then finds, from 150~ms before to 50~ms after the trigger, the sample that best splits a quiet segment from an active one, and reports it as the onset. Because this second step has no threshold, the onset does not move with the trigger level: across 79 starts and thresholds of 10--50~mg it stayed on the same sample in 70 starts and within one in 74, while a threshold-only detector drifted by a median 9.3~ms (Appendix~\ref{app:sweep}). After the result, the unit sends the run to the app over BLE, which saves it as CSV; the board keeps it in RAM until the app confirms.
 
 \paragraph{App and clock synchronization.}
-The Flutter app (iOS and Android) connects to the unit's GATT service. In \emph{Reaction} mode it mirrors the unit's phases and shows its result. In \emph{Photofinish} mode the board's ``go'' instant has to be expressed on the phone's clock. Between ``on your marks'' and ``set'' the phone pings the board; the board answers with its receive and send times. Over a 10~s window the app keeps the minimum of each one-way difference separately,
+The Flutter app (iOS) connects to the unit's GATT service. In \emph{Reaction} mode it mirrors the unit's phases and shows the reaction time. In \emph{Photofinish} mode it also times the finish and reports total, reaction and run time (Figure~\ref{fig:app}); for this, the board's ``go'' instant must be converted to the phone's clock, so the app estimates the offset $\theta$ (phone time minus board time). Between ``on your marks'' and ``set'' the phone pings the board for 10~s. Each ping has four timestamps: the phone sends at $t_1$, the board receives at $t_2$ and replies at $t_3$, and the phone receives at $t_4$. Each one-way difference equals $\pm\theta$ plus a transmission delay that varies but is never negative, so the smallest value in each direction is the least noisy:
 \[
-a=\min(t_\mathrm{rx}-t_1),\quad b=\min(t_4-t_\mathrm{tx}),\quad \theta=\tfrac{b-a}{2},
+a=\min(t_2-t_1),\quad b=\min(t_4-t_3),\quad \theta=\tfrac{b-a}{2}.
 \]
-where $t_1,t_4$ are the phone's send and receive stamps and $\theta$ is the phone--board offset. Minimizing each direction on its own matters on BLE: a reply waits for the next connection event, so a single round trip is asymmetric by up to one interval (15--30~ms on iOS), while each direction's minimum is a message that just made its event \cite{cristian}. The residual error is bounded by half the minimum round trip, and drift (20--50~ppm) adds under 0.5~ms over the window.
-
-\paragraph{AI photo finish.}
-The phone stands in line with the finish, and the user drags a line onto the painted one. The camera runs at its highest frame rate (240~fps on an iPhone~13), with stabilization off and a short exposure (1/1000~s) against motion blur; every frame keeps the time it was captured, on the same clock the synchronization uses. From ``go'' the frames are kept in memory, and when a body enters a narrow band around the line, MediaPipe Pose \cite{blazepose} analyses the pass. The rules time the torso \cite{watr}, but pose landmarks are joints inside the body, so the torso centre crosses about 20~ms after the chest. We therefore take the chest front from the body silhouette: between shoulders and hips, with the arm removed, the frontmost edge of each row, and the 80th percentile of these edges, so a stray forearm cannot move it. Between the last frame before the line and the first after it, interpolation gives the crossing instant, and a line fit over $\pm$160~ms smooths per-frame noise. The time is shown to the millisecond and, as the rules prescribe, rounded up to the hundredth \cite{watr}. The detector was first written in Python and then ported to the app; on the same clips the two agree within a few ms (1.993 vs.\ 1.994~s at 30~fps; 0.864 vs.\ 0.862~s at 240~fps).
+The two directions are minimized separately because BLE delays are asymmetric: a reply waits for the next connection event, which can skew a single round trip by up to one interval (15--30~ms on iOS) \cite{cristian}. The offset error is bounded by half the minimum round trip, $(a+b)/2$, which the app computes on every sync. On an iPhone~13 this bound was 19~ms, set by the $\sim$30~ms iOS connection interval (forcing 15~ms had no effect). The bound is conservative, as it assumes the entire minimum delay falls in one direction; the end-to-end photofinish comparison (Sec.~\ref{sec:eval}) suggests the actual error is considerably smaller. Clock drift (20--50~ppm) adds under 0.5~ms between sync and start.
 
 \begin{colfig}
-\includegraphics[width=\linewidth,height=3.8cm,keepaspectratio]{placeholder_app.png}
-\captionof{figure}{The app: reaction result mirrored from the unit (left) and photo-finish result with the line and the timed chest point (right).}
+\includegraphics[width=\linewidth,height=3.8cm,keepaspectratio]{appscreen.jpg}
+\captionof{figure}{The app's result screen after a 10~m run on an iPhone~13.}
 \label{fig:app}
 \end{colfig}
 
+\paragraph{Camera-based photo finish.}
+The phone stands in line with the finish, and the user drags a line onto the real one. The camera runs at its highest frame rate (240~fps on an iPhone~13), with no stabilization and a short exposure (1/1000~s) against motion blur; every frame keeps the time it was captured, on the same clock the synchronization uses. From ``go'' the frames are kept in memory, and when a body enters a narrow band around the line, MediaPipe Pose \cite{blazepose} analyzes the pass. The rules time the torso \cite{watr}, but the pose landmarks are joints inside the body, so the center of the torso crosses about 20~ms after the chest. We therefore take the chest front from the body silhouette: between shoulders and hips, with the arm removed, the frontmost edge of each row, and the 80th percentile of these edges, so a stray forearm cannot move it. Between the last frame before the line and the first after it, interpolation gives the crossing instant, and a line fit over $\pm$160~ms smooths per-frame noise. The time is shown to the millisecond and, as the rules prescribe, rounded up to the hundredth \cite{watr}. The detector was first written in Python and then ported to the app; on the same clips the two agree within a few ms (0.864 vs.\ 0.862~s at 240~fps).
+
+
 %% =====================================================================
-\section{Evaluation}
+\section{Evaluation \& Results}
 \label{sec:eval}
 %% =====================================================================
 
 \paragraph{Timing path.}
-On the PCB the unit samples at 803.2~Hz with no gaps and no dropped samples, and 0.9~$\mu$s timestamp jitter (2.8~$\mu$s with the phone connected). Re-running the detector offline on every capture gives the board's onset on the same sample (e.g.\ 163.8~ms). The unit's own resolution is therefore one sample, 1.2~ms. Figure~\ref{fig:start} shows what the detector sees in a block start.
+On the PCB the unit samples at 803.6~Hz with no gaps and no dropped samples, a maximum interval of 1.25~ms, and 0.55~$\mu$s timestamp jitter. Re-running the detector offline on every capture gives the board's onset on the same sample (e.g.\ 163.8~ms). The unit's own resolution is therefore one sample, 1.2~ms. Figure~\ref{fig:start} shows what the detector sees in a block start.
 
 \begin{colfig}
 \includegraphics[width=\linewidth]{start_138ms.png}
@@ -153,39 +153,38 @@ On the PCB the unit samples at 803.2~Hz with no gaps and no dropped samples, and
 \end{colfig}
 
 \paragraph{Reaction time vs.\ 240~fps video.}
-For ground truth we added an LED that the firmware lights at the ``go'' instant, and filmed the block at 240~fps (4.2~ms per frame) in \tbd{N} starts. The first lit frame gives ``go'' exactly to the frame; the push-off is the first frame in which the athlete visibly moves, chosen by eye. Board and video agreed within about 8~ms (Figure~\ref{fig:validation}). This is the resolution of the reference, not of the unit: one frame alone is 4.2~ms, and the eye picks the first visible motion of the body, whereas the accelerometer feels the first force on the block. Two constant terms remain unmeasured, the BMI270 filter delay and the sound's travel to the athlete (2.9~ms per metre). We are confident the unit stays within its 1.2~ms sample; showing it directly needs a 1000~fps camera, our next step.
+As an independent reference, we filmed the block at 240~fps (4.2~ms per frame) during test starts and took the reaction time from the footage as the interval between the ``go'' signal and the push-off. The ``go'' instant is the first frame in which the green LED is lit. The push-off is harder to place: the shoe starts to compress against the block before the athlete visibly moves, so the frame was chosen by eye and may be off by a frame or two. Figure~\ref{fig:validation} shows the two video frames for an example start and the board's reading.
 
 \begin{colfig}
-\includegraphics[width=\linewidth,height=3.6cm,keepaspectratio]{placeholder_validation.png}
-\captionof{figure}{Reaction time, board vs.\ 240~fps video, one point per start: difference against mean.}
+\centering
+\includegraphics[width=0.32\linewidth]{1.png}\hfill
+\includegraphics[width=0.32\linewidth]{2.png}\hfill
+\includegraphics[width=0.32\linewidth]{3.png}
+\captionof{figure}{Example start: the ``go'' frame with the green LED lit (left), the push-off frame at 240~fps (middle), and the reaction time shown by the prototype (right).}
 \label{fig:validation}
 \end{colfig}
 
+Board and video agreed within about 8~ms, roughly two frames. The buzzer was about 1.5~m from the athlete, so the sound arrives about 4.4~ms after ``go'' (at 343~m/s). This is a systematic offset, and for a known distance it can be subtracted. The board's error is therefore at most about 8~ms, a bound set by the video reference itself; with a sharper reference, we expect it to approach the 1.24~ms sampling interval of the accelerometer.
+
 \paragraph{Photo finish.}
-The finish time combines the sync, the frame timing and the detector, so we validated it end to end. Hand timing on the same runs read about 0.24~s fast, matching the literature \cite{mann}. Against a 60~fps reference video read frame by frame, the app's time differed by 10~ms, less than one 60~fps frame (16.7~ms) and well within the 33~ms (one frame at 30~fps) we set as the target at half-time: interpolating between frames gives a sub-frame time (Figure~\ref{fig:finishframe}). Figure~\ref{fig:errors} puts every error in this paper on one scale.
+The finish time depends on the clock synchronization between the unit and the phone, the camera frame timestamps and the crossing detector, so we validated them together, end to end. In a test run against a 60~fps reference video read frame by frame, the app's finish time differed by 10~ms. This is less than one frame of the reference video (16.7~ms) and well within the 33~ms (one frame at 30~fps) target set at the design stage. As with the reaction time, the reference cannot resolve differences much below one frame, while the app interpolates between the frames surrounding the line to obtain a sub-frame crossing time (Figure~\ref{fig:finishframe}); more runs are needed to characterize its error. We also timed the same run by hand: the stopwatch read about 0.2--0.3~s faster than the app, in line with the 0.24~s reported in the literature \cite{mann}.
 
 \begin{colfig}
-\includegraphics[width=\linewidth,height=3.6cm,keepaspectratio]{placeholder_finish_frame.png}
+\includegraphics[width=0.8\linewidth,keepaspectratio]{figures/detection.png}
 \captionof{figure}{The app's result frame at the crossing: finish line, body silhouette (cyan) and the timed chest point.}
 \label{fig:finishframe}
 \end{colfig}
 
-\begin{colfig}
-\includegraphics[width=\linewidth]{fig_error_scale.pdf}
-\captionof{figure}{Every timing error in this paper on one log axis: measured disagreements (filled) against frame and sample intervals and hand timing.}
-\label{fig:errors}
-\end{colfig}
-
 \paragraph{Limitations.}
-Besides the two constant delays above, the direct BLE link reaches about 30~m, so a full 100~m needs the relay planned in Section~2. In dim light the camera cannot shorten the exposure below about 1/250~s, and motion blur grows. An arm swung across the chest can hide the chest edge from the silhouette, and with two athletes in the frame the detector times the larger torso, so the app is meant for one athlete per run. Finally, the phone must stand in line with the finish: off the line, parallax shifts the crossing.
+The validation is preliminary: the finish time rests on a single run, and both video references bound the error rather than measure it; a finer validation is planned. Besides the constant delays, the direct BLE link reaches about 30~m, so a full 100~m needs the relay planned in Section~2. In low light the exposure cannot go below about 1/250~s, increasing motion blur. An arm across the chest can hide the chest edge, and with two athletes in frame the detector times the larger torso, so the app is meant for one athlete per run.
 
-%% =====================================================================
+
 \section{Conclusions}
 %% =====================================================================
 
-We built a start unit on one microcontroller, from PCB to printed box, and a phone app that together time a sprinter's reaction and finish, for parts costing \tbd{\textasciitilde X~SEK}.
-Against high-speed video both agree within the reference's own uncertainty, 8~ms for reaction and 10~ms for the finish, against 240~ms for a stopwatch.
-Next, a 1000~fps camera will check the unit's 1.2~ms resolution directly and measure the constant delays of the sensor and the sound.
+We built a start unit on one microcontroller, from PCB to printed box, and a phone app that together time a sprinter's reaction and finish, for about 300~SEK in parts (Table~\ref{tab:bom}), against about US\$1{,}600 for a single-block commercial trainer \cite{vsath}.
+Against video, reaction times agreed within about 8~ms, the uncertainty of the reference itself, and a first finish time within 10~ms, whereas a stopwatch read about 0.24~s fast.
+Next, a 1000~fps camera will check the unit's 1.24~ms sampling interval directly and measure the constant delays of the sensor and the sound, and the unit, now powered by a USB power bank, will move to a built-in LiPo cell.
 
 \end{multicols}
 
@@ -275,62 +274,83 @@ Next, a 1000~fps camera will check the unit's 1.2~ms resolution directly and mea
 \section{Source code}
 \label{app:code}
 
-Firmware, app, photo-finish reference, analysis tools, PCB project and enclosure files: \url{https://github.com/lorenzogalli-dev/Prostart}. The firmware is in \texttt{Arduino/AlgorithmRealTimeESP32/}, the app in \texttt{prostart/}, the KiCad project in \texttt{Hardware/PCB\_ProStart\_POC/}, the STL files in \texttt{Hardware/Enclosure/}.
+Everything needed to rebuild the system is in one repository, \url{https://github.com/lorenzogalli-dev/Prostart}:
+
+\begin{table}[H]
+\centering\small
+\begin{tabularx}{\linewidth}{lL}
+\toprule
+Folder & Content \\
+\midrule
+\texttt{Arduino/AlgorithmRealTimeESP32/} & start-unit firmware (ESP32-C3 + BMI270, BLE); wiring, build and test notes \\
+\texttt{Arduino/AlgorithmRealTime/} & first prototype (XIAO nRF52840 Sense), same detector \\
+\texttt{Arduino/EspNowLrTest/} & long-range ESP-NOW field test for the finish relay, with its measurements \\
+\texttt{prostart/} & Flutter app and its native camera plugin (photo finish) \\
+\texttt{AI\_Torso\_Detector/} & Python reference of the photo-finish detector (MediaPipe) \\
+\texttt{Hardware/} & KiCad project, Gerbers and BOM (\texttt{PCB\_ProStart\_POC/}); enclosure STL files (\texttt{Enclosure/}) \\
+\texttt{Data/}, \texttt{Arduino/*/Data/} & recorded block starts (CSV), used for the threshold sweep (Appendix~\ref{app:sweep}) \\
+\bottomrule
+\end{tabularx}
+\caption{Repository layout.}
+\label{tab:repo}
+\end{table}
 
 \section{Hardware}
 \label{app:hw}
 
+The first prototype (Figure~\ref{fig:prototype}) was a Seeed XIAO nRF52840 Sense, whose on-board LSM6DS3 accelerometer sampled at about 865~Hz, with a button and the buzzer on a breadboard; it recorded the 79 block starts of Appendix~\ref{app:sweep} and validated the detector. The final unit moves to an ESP32-C3 with an external BMI270, whose FIFO decouples sampling from the radio, on a custom two-layer PCB (Figures~\ref{fig:schematic} and~\ref{fig:pcb}). Table~\ref{tab:bom} lists the parts, the pin map and their cost.
+
 \begin{figure}[H]
 \centering
-\includegraphics[height=5cm]{prototype_breadboard.jpg}
-\caption{The first prototype on a breadboard: microcontroller, button and buzzer.}
+\includegraphics[width=0.48\linewidth,height=4.6cm,keepaspectratio]{prototype.pdf}\hfill
+\includegraphics[width=0.48\linewidth,height=4.6cm,keepaspectratio]{prototype.png}
+\caption{The first prototype: breadboard wiring diagram (left) and the real breadboard with the XIAO nRF52840 Sense, button and buzzer (right).}
 \label{fig:prototype}
 \end{figure}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\linewidth]{pcb_schematic.jpeg}
-\caption{Schematic of the start unit. J2/J3: BMI270 breakout (I$^2$C, INT1); J1: TFT display; BZ1: piezo between GPIO1 and GPIO2.}
+\includegraphics[width=0.48\linewidth,height=4.6cm,keepaspectratio]{pcb_schematic.jpeg}\hfill
+\includegraphics[width=0.48\linewidth,height=4.6cm,keepaspectratio]{pcb_layout.png}
+\caption{Schematic of the start unit (left) and routed layout of the 65.5$\times$34~mm PCB (right). J2/J3: BMI270 breakout (I$^2$C, INT1); J1: TFT display; BZ1: piezo between GPIO1 and GPIO2.}
 \label{fig:schematic}
 \end{figure}
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.49\linewidth]{pcb_layout.jpeg}\hfill
-\includegraphics[width=0.49\linewidth]{pcb_3d.jpeg}
-\caption{Two-layer PCB, 65.5$\times$34~mm: routed layout (left) and 3D view (right).}
+\includegraphics[width=0.48\linewidth,height=4.6cm,keepaspectratio]{pcb_3d.png}\hfill
+\includegraphics[width=0.48\linewidth,height=4.6cm,keepaspectratio]{pcb_open.png}
+\caption{The final unit: 3D view of the PCB (left) and the assembled board with display in the printed box (right).}
 \label{fig:pcb}
-\end{figure}
-
-\begin{figure}[H]
-\centering
-\includegraphics[width=0.48\linewidth]{placeholder_pcb_photo.png}
-\caption{The assembled PCB.}
-\label{fig:box}
 \end{figure}
 
 \begin{table}[H]
 \centering\small
-\begin{tabular}{lll}
+\begin{tabular}{lllr}
 \toprule
-Ref. & Part & Connection \\
+Ref. & Part & Connection & SEK\textsuperscript{*} \\
 \midrule
-U1 & ESP32-C3 SuperMini & -- \\
-J2, J3 & BMI270 breakout \cite{bmi} & SDA GPIO0, SCL GPIO3, INT1 GPIO20 \\
-J1 & 1.77'' ST7735 TFT, 128$\times$160 & SCK 8, MOSI 10, CS 7, DC 6, RES 5, BL 4 \\
-SW1 & 6~mm push button & GPIO9 to GND \\
-BZ1 & 12~mm piezo buzzer & GPIO1 / GPIO2, antiphase \\
-C1, C2 & 100~nF, 10~$\mu$F & 3.3~V rail \\
-D1 & LED + 100--220~$\Omega$ (validation only) & GPIO21, lit at ``go'' \\
+U1 & ESP32-C3 SuperMini & -- & 40 \\
+J2, J3 & BMI270 breakout \cite{bmi} & SDA GPIO0, SCL GPIO3, INT1 GPIO20 & 100 \\
+J1 & 1.77'' ST7735 TFT, 128$\times$160 & SCK 8, MOSI 10, CS 7, DC 6, RES 5, BL 4 & 70 \\
+SW1 & 6~mm push button & GPIO9 to GND & 5 \\
+BZ1 & 12~mm piezo buzzer & GPIO1 / GPIO2, antiphase & 10 \\
+C1, C2 & 100~nF, 10~$\mu$F & 3.3~V rail & 5 \\
+-- & Two-layer PCB, 65.5$\times$34~mm (batch of 5) & -- & 30 \\
+-- & Printed box, lid and button cap (PLA) & -- & 15 \\
+-- & Strap & -- & 20 \\
+\midrule
+ & \textbf{Total} & & \textbf{$\approx$295} \\
 \bottomrule
 \end{tabular}
-\caption{Bill of materials and pin map.}
+\caption{Bill of materials, pin map and estimated part prices. \textsuperscript{*}Estimated one-off retail prices in October 2026, excluding the phone and the USB power bank that powers the unit. The green validation LED (GPIO21, Section~\ref{sec:eval}) is not part of the product.}
 \label{tab:bom}
 \end{table}
 
-\clearpage
 \section{Firmware parameters and BLE protocol}
 \label{app:params}
+
+Table~\ref{tab:params} collects the constants of Section~2 in one place, while Table~\ref{tab:ble} is the GATT service the app talks to.
 
 \begin{table}[H]
 \centering\small
@@ -338,12 +358,13 @@ D1 & LED + 100--220~$\Omega$ (validation only) & GPIO21, lit at ``go'' \\
 \toprule
 Parameter & Value \\
 \midrule
-Sampling & BMI270, 800~Hz nominal (803.2~Hz measured), $\pm$16~g, 0.488~mg/LSB, FIFO 337 frames (0.42~s), data-ready stamped in the ISR (1~$\mu$s clock) \\
+Sampling & BMI270, 800~Hz nominal (803.6~Hz measured), $\pm$16~g, 0.488~mg/LSB; FIFO of 337 frames (0.42~s); data-ready stamped in the ISR (1~$\mu$s clock) \\
 Sequence & countdown 3~s; marks $\rightarrow$ set 20--25~s; arm when $<$15~mg for 200~ms (at least 800~ms after set, at most 4~s); go 0.7--1.5~s after arming \\
 Beep & 4~kHz, 100~ms, two register writes, stamped at the write \\
 STA/LTA & 15~ms / 800~ms, on at ratio 6, off at 2, 20~mg floor, 15~ms confirmation \\
 AIC window & 150~ms before, 50~ms after the trigger \\
 False start & onset $<$ 100~ms after go \\
+Timing check & before every verdict: no gap longer than 3 sample periods and no FIFO resynchronization since ``set'', otherwise the start is reported as unusable \\
 Storage & none on the board: the run waits in RAM until the app confirms it has saved it \\
 \bottomrule
 \end{tabularx}
@@ -360,21 +381,23 @@ Characteristic & Content \\
 \texttt{event} (notify) & type, counter (a gap reveals a lost event); countdown digit; marks/set/go board time ($\mu$s); result: verdict, reaction time, onset and go times \\
 \texttt{ping} (write) & 16-bit sequence number from the phone \\
 \texttt{pong} (notify) & sequence, board receive time, board send time; answered only before ``set'' \\
-\texttt{data} (notify) & the finished run: run info, samples (24 per packet on iOS), end marker \\
-\texttt{ctrl} (write) & the app asks for a run or a missing range, and confirms it was saved \\
+\texttt{data} (notify) & the last start's recording: run info, samples (10~bytes each, up to 24 per packet on iOS), end of run \\
+\texttt{ctrl} (write) & from the app: get a run or a range of samples; acknowledge a run once saved \\
 \bottomrule
 \end{tabularx}
-\caption{BLE GATT service of the start unit. Board times are 32-bit microseconds, unwrapped by the app.}
+\caption{BLE GATT service of the start unit (UUIDs \texttt{F7280000-\ldots} to \texttt{F7280005-\ldots}). Board times are 32-bit microseconds, unwrapped by the app.}
 \label{tab:ble}
 \end{table}
 
 \section{Threshold independence of the onset}
 \label{app:sweep}
 
+A detector that reports the instant its signal crosses a threshold reports a later onset the higher the threshold, and on a slow push-off by several milliseconds. To check that the AIC picker does not, we re-ran the offline detector on all 79 block starts recorded with the first prototype, sweeping the detection threshold from 10 to 50~mg, once with the AIC picker and once without, and measured how far the reported onset moved from its value at the lowest threshold (Figure~\ref{fig:sweep}). The AIC onset stayed on the same sample in 70 starts and within one sample in 74, while the threshold-only onset drifted by a median 9.3~ms over the sweep. The detector's threshold therefore decides only \emph{whether} the athlete moved, not \emph{when}.
+
 \begin{figure}[H]
 \centering
-\includegraphics[width=0.62\linewidth]{threshold_sweep.pdf}
-\caption{Threshold sweep over 79 block starts recorded with the half-time unit (10--50~mg): the AIC onset stays fixed while threshold-only detection drifts (median 9.3~ms).}
+\includegraphics[width=\linewidth]{threshold_sweep.pdf}
+\caption{Threshold sweep over 79 block starts recorded with the first prototype (10--50~mg): the AIC onset stays fixed while threshold-only detection drifts (median 9.3~ms).}
 \label{fig:sweep}
 \end{figure}
 

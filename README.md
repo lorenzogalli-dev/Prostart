@@ -6,7 +6,7 @@
 
 A start unit that mounts on any starting block, and a phone app that turns a smartphone into a photo finish. The unit sounds the start commands, detects the push-off with an accelerometer and judges the start on its own clock; the phone times the chest crossing the line from the same "go".
 
-Course project, Technology and Health, KTH Royal Institute of Technology, HT26: Arianna Bartocci, Duarte Chambel, Lorenzo Galli, Loke Enlund Östangård, Ninad Purekar. Full write-up: [`Papers/Final Paper/main.pdf`](Papers/Final%20Paper/main.pdf).
+Course project, Technology and Health, KTH Royal Institute of Technology, HT26: Arianna Bartocci, Duarte Chambel, Lorenzo Galli, Loke Enlund Östangård, Ninad Purekar. Full write-up: [`Papers/Final Paper/CM2024_Sprint_Start_Final_Paper.pdf`](Papers/Final%20Paper/CM2024_Sprint_Start_Final_Paper.pdf).
 
 ## How it works
 
@@ -38,12 +38,13 @@ Parts for one start unit, one-off retail prices (estimates):
 | Part | SEK |
 |---|---:|
 | ESP32-C3 SuperMini | 40 |
-| BMI270 accelerometer breakout | 90 |
+| BMI270 accelerometer breakout | 100 |
 | 1.77" ST7735 TFT | 70 |
+| Push button, 12 mm piezo, capacitors | 20 |
 | Two-layer PCB (65.5 × 34 mm, batch of 5) | 30 |
-| Piezo, button, capacitors | 15 |
-| 3D-printed enclosure (PLA) | 15 |
-| **Total** | **≈ 260** |
+| 3D-printed box, lid and button cap (PLA) | 15 |
+| Strap to the block | 20 |
+| **Total** | **≈ 295** |
 
 For now the unit runs from a USB power bank; the next version will have a built-in LiPo cell and charger (~60 SEK more). The phone is the athlete's own. A single-block commercial reaction timer lists at about US$1,600 (~17,000 SEK); certified competition systems cost far more.
 
@@ -81,7 +82,7 @@ AI_Torso_Detector/               photo-finish reference in Python (MediaPipe)
 Hardware/                        KiCad PCB, Gerbers, BOM; enclosure STL files
 Data/                            block-start captures
 Docs/                            algorithm, build and run notes, figures
-Papers/                          final paper (LaTeX + PDF, slides), half-time paper
+Papers/                          final paper (LaTeX, PDF, slides), half-time paper
 ```
 
 - **Firmware:** `arduino-cli compile --fqbn esp32:esp32:nologo_esp32c3_super_mini Arduino/AlgorithmRealTimeESP32` (ESP32 core 3.3.x), then `arduino-cli upload` with the same FQBN and `-p <port>`.
