@@ -90,4 +90,4 @@ Papers/                          final paper (LaTeX + PDF, slides), half-time pa
 
 ## License
 
-[MIT](LICENSE). Vendored third-party code keeps its own license: `Arduino/libraries/Seeed_Arduino_LSM6DS3` (MIT), Bosch's BMI270 configuration in `Bmi270Config.h` (BSD-3-Clause).
+All rights reserved: see [LICENSE](LICENSE). The code is visible for academic assessment only; no use, copy, modification or commercial use without the authors' written permission. Third-party code keeps its own license: `Arduino/libraries/Seeed_Arduino_LSM6DS3` (MIT), Bosch's BMI270 configuration in `Bmi270Config.h` (BSD-3-Clause).
