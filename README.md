@@ -42,11 +42,10 @@ Parts for one start unit, one-off retail prices (estimates):
 | 1.77" ST7735 TFT | 70 |
 | Two-layer PCB (65.5 × 34 mm, batch of 5) | 30 |
 | Piezo, button, capacitors | 15 |
-| LiPo cell + charger module | 60 |
 | 3D-printed enclosure (PLA) | 15 |
-| **Total** | **≈ 320** |
+| **Total** | **≈ 260** |
 
-The phone is the athlete's own. A single-block commercial reaction timer lists at about US$1,600 (~17,000 SEK); certified competition systems cost far more.
+For now the unit runs from a USB power bank; the next version will have a built-in LiPo cell and charger (~60 SEK more). The phone is the athlete's own. A single-block commercial reaction timer lists at about US$1,600 (~17,000 SEK); certified competition systems cost far more.
 
 ## Business plan
 
