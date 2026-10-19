@@ -2,3 +2,6 @@
 .history/
 *.lck
 fp-info-cache
+*.kicad_prl
+temp-*.dsn
+production/backups/

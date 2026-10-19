@@ -1,5 +1,7 @@
 # BUILD — environment, versions, and how to run everything
 
+> **Note:** the firmware and Python sections cover the first prototype (XIAO nRF52840, `Arduino/AlgorithmRealTime/`). The current firmware is `Arduino/AlgorithmRealTimeESP32/`: build, wiring and tests are in its `INFO.md`.
+
 This is the practical companion to `HANDOFF.md`: only what to install and what
 command to run, per component. See `HANDOFF.md` for how each piece works
 internally and the history behind the current design.

@@ -6,3 +6,15 @@
 # Python
 __pycache__/
 *.pyc
+
+# Editor settings
+.vscode/
+
+# Published papers used as references: kept locally, not redistributed
+Docs/references/
+
+# Media for ads and the presentation: kept locally, not used by the app
+prostart/prostart media/
+
+# Working notes, kept locally
+Docs/HANDOFF.md

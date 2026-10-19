@@ -37,5 +37,4 @@ lib/
 │   └── photofinish_result_screen.dart
 └── widgets/                          # glass cards, bottom nav bar, result widgets
 assets/images/                        # start trace, finish frame, avatar
-Prostart Media/                       # screenshots and page renders for the presentation
 ```

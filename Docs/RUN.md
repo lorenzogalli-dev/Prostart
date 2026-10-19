@@ -1,5 +1,7 @@
 # RUN.md — what each file is and how to run it
 
+> **Note:** this file covers the first prototype (XIAO nRF52840, `Arduino/AlgorithmRealTime/`). The current firmware is `Arduino/AlgorithmRealTimeESP32/`: build, wiring and tests are in its `INFO.md`.
+
 Exact versions and setup: [BUILD.md](./BUILD.md). Why the algorithm works the
 way it does: [ALGORITHM.md](./ALGORITHM.md).
 
